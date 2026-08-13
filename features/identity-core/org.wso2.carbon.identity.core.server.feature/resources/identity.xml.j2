@@ -5074,6 +5074,9 @@
     </UserProfileExport>
 
     <EnableBasicAuthHandler>{{authentication.enable_basic_auth_handler}}</EnableBasicAuthHandler>
+    <!-- When set to true, this exposes the exact authentication failure reason in the Basic Authentication
+     failure response. -->
+    <ShowBasicAuthFailureReason>{{authentication.show_basic_auth_failure_reason}}</ShowBasicAuthFailureReason>
     {% if input_validation.username is defined %}
     <InputValidation>
         <Username>
@@ -5110,8 +5113,6 @@
         <!-- When set to true, this enables sending a specific authentication failure message in the API response
          when an account is locked. -->
         <SetAccountLockAuthFailureReason>{{api_response.set_account_lock_auth_failure_reason}}</SetAccountLockAuthFailureReason>
-        <!-- When set to true, this exposes the exact authentication failure reason in the API error response. -->
-        <ShowAuthFailureReason>{{api_response.show_auth_failure_reason}}</ShowAuthFailureReason>
     </APIResponse>
 
     <SuperTenantAliasInPublicUrl>{{super_tenant.alias_in_public_url}}</SuperTenantAliasInPublicUrl>

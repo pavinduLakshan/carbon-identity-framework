@@ -2231,6 +2231,7 @@
   "email_templates.branding.fallbacks.dark_border_color": "#333333",
   "email_templates.branding.fallbacks.support_mail": "",
   "authentication.enable_basic_auth_handler": true,
+  "authentication.show_basic_auth_failure_reason": false,
 
   "organization_management.self_service.system_user_name": "B2B-SS-System-User",
   "organization_management.self_service.default_system_app_name": "B2B-Self-Service-Mgt-Application",
@@ -2244,7 +2245,6 @@
   "client_attestation.apple_attestation_revocation_check_enabled": false,
 
   "api_response.set_account_lock_auth_failure_reason": false,
-  "api_response.show_auth_failure_reason": false,
 
   "super_tenant.alias_in_public_url": "",
   "connector.challenge_questions.enable": false,
