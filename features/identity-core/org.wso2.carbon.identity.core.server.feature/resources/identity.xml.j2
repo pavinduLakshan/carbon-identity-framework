@@ -4686,6 +4686,19 @@
         {% if x509.request_header_encoded is defined %}
         <X509RequestHeaderEncoded>{{x509.request_header_encoded}}</X509RequestHeaderEncoded>
         {% endif %}
+        {% if x509.header_based_authentication_enabled is defined %}
+        <HeaderBasedAuthenticationEnabled>{{x509.header_based_authentication_enabled}}</HeaderBasedAuthenticationEnabled>
+        {% endif %}
+        {% if x509.trusted_certificate is defined %}
+        <TrustedCertificates>
+            {% for trusted_certificate in x509.trusted_certificate %}
+            <TrustedCertificate>
+                <IssuerDN>{{ trusted_certificate.issuer_dn }}</IssuerDN>
+                <SHA256Thumbprint>{{ trusted_certificate.thumbprint }}</SHA256Thumbprint>
+            </TrustedCertificate>
+            {% endfor %}
+        </TrustedCertificates>
+        {% endif %}
     </X509>
 
     <!-- Configuration to use internal hostname for X509 certificate authenticator redirects. -->
