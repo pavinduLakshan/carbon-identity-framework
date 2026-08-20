@@ -4686,15 +4686,9 @@
         {% if x509.request_header_encoded is defined %}
         <X509RequestHeaderEncoded>{{x509.request_header_encoded}}</X509RequestHeaderEncoded>
         {% endif %}
-        <!--The X509 certificate passed over the HTTP header is honoured only when this is enabled. It is disabled by
-        default because the header can be set by any client that can reach the connector, so it is trusted only where
-        an SSL terminating proxy is known to set it and to strip any client supplied copy of it. When enabled, only
-        the certificates listed under TrustedCertificates below are honoured. -->
         {% if x509.header_based_authentication_enabled is defined %}
         <HeaderBasedAuthenticationEnabled>{{x509.header_based_authentication_enabled}}</HeaderBasedAuthenticationEnabled>
         {% endif %}
-        <!--Certificates that may be asserted through the X509 HTTP header, each pinned by its issuer DN and by the
-        SHA-256 thumbprint of the certificate itself. A certificate that does not match an entry here is rejected. -->
         {% if x509.trusted_certificate is defined %}
         <TrustedCertificates>
             {% for trusted_certificate in x509.trusted_certificate %}
