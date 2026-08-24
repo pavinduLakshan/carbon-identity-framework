@@ -4678,8 +4678,34 @@ public class FrameworkUtils {
                         .setTenant(context.getLoginTenantDomain()).setOrganization(callerOrgId)
                         .build().getAbsolutePublicURL();
             }
+        } else {
+            return prependProxyContextPath(callerPath);
         }
         return callerPath;
+    }
+
+    /**
+     * Prepend the configured proxy context path to a server relative caller path.
+     *
+     * @param callerPath Caller path, either server relative or absolute.
+     * @return Caller path with the proxy context path applied when applicable.
+     */
+    private static String prependProxyContextPath(String callerPath) {
+
+        if (StringUtils.isBlank(callerPath) || !callerPath.startsWith("/")) {
+            return callerPath;
+        }
+        String proxyContextPath = ServerConfiguration.getInstance()
+                .getFirstProperty(IdentityCoreConstants.PROXY_CONTEXT_PATH);
+        if (StringUtils.isBlank(proxyContextPath)) {
+            return callerPath;
+        }
+        String normalizedProxyContextPath = "/" + StringUtils.strip(proxyContextPath.trim(), "/");
+        if (callerPath.equals(normalizedProxyContextPath)
+                || callerPath.startsWith(normalizedProxyContextPath + "/")) {
+            return callerPath;
+        }
+        return normalizedProxyContextPath + callerPath;
     }
 
     /**

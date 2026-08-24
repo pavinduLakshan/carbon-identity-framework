@@ -30,6 +30,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
+import org.wso2.carbon.base.ServerConfiguration;
 import org.wso2.carbon.context.CarbonContext;
 import org.wso2.carbon.core.SameSiteCookie;
 import org.wso2.carbon.identity.application.authentication.framework.ApplicationAuthenticator;
@@ -80,6 +81,7 @@ import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.application.common.model.ServiceProvider;
 import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataHandler;
 import org.wso2.carbon.identity.common.testng.WithCarbonHome;
+import org.wso2.carbon.identity.core.URLBuilderException;
 import org.wso2.carbon.identity.core.model.IdentityCookieConfig;
 import org.wso2.carbon.identity.core.util.IdentityConfigParser;
 import org.wso2.carbon.identity.core.util.IdentityCoreConstants;
@@ -138,6 +140,8 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
+import static org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants.Application.CONSOLE_APP;
+import static org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants.Application.MY_ACCOUNT_APP;
 import static org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants.CREATED_TIMESTAMP;
 import static org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants.GROUPS_CLAIM;
 import static org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants.OrgDiscoveryInputParameters.LOGIN_HINT;
@@ -2126,6 +2130,61 @@ public class FrameworkUtilsTest extends IdentityBaseTest {
             long expectedTimeout = TimeUnit.SECONDS.toNanos(idleSessionTimeout);
             assertEquals(capturedTimeout, expectedTimeout,
                     "Timeout should be the original idle timeout when max lifetime is not configured");
+        }
+    }
+
+    @DataProvider(name = "buildCallerPathRedirectURLDataProvider")
+    public Object[][] provideBuildCallerPathRedirectURLData() {
+
+        return new Object[][]{
+                // {applicationName, callerPath, proxyContextPath, expectedResult}
+
+                {MY_ACCOUNT_APP, "/myaccount", "auth", "/auth/myaccount"},
+                {CONSOLE_APP, "/console", "auth", "/auth/console"},
+                {MY_ACCOUNT_APP, "/t/foo.com/myaccount", "auth", "/auth/t/foo.com/myaccount"},
+                {CONSOLE_APP, "/t/foo.com/o/orgid/console", "auth", "/auth/t/foo.com/o/orgid/console"},
+
+                {CONSOLE_APP, "/console", "/auth/", "/auth/console"},
+                {CONSOLE_APP, "/console", "  auth  ", "/auth/console"},
+
+                {MY_ACCOUNT_APP, "/auth/myaccount", "auth", "/auth/myaccount"},
+                {CONSOLE_APP, "/auth", "auth", "/auth"},
+
+                {CONSOLE_APP, "/authenticate", "auth", "/auth/authenticate"},
+
+                {MY_ACCOUNT_APP, "/myaccount", "", "/myaccount"},
+                {CONSOLE_APP, "/console", null, "/console"},
+
+                {MY_ACCOUNT_APP, "https://example.com/myaccount", "auth", "https://example.com/myaccount"},
+                {CONSOLE_APP, null, "auth", null},
+                {CONSOLE_APP, "", "auth", ""},
+
+                {"custom-sp", "/customapp", "auth", "/customapp"},
+
+                {null, "/somepath", "auth", "/somepath"},
+        };
+    }
+
+    @Test(dataProvider = "buildCallerPathRedirectURLDataProvider")
+    public void testBuildCallerPathRedirectURL(String applicationName, String callerPath, String proxyContextPath,
+                                               String expected) throws URLBuilderException {
+
+        AuthenticationContext context = new AuthenticationContext();
+        if (applicationName != null) {
+            SequenceConfig sequenceConfig = new SequenceConfig();
+            ApplicationConfig applicationConfig = mock(ApplicationConfig.class);
+            when(applicationConfig.getApplicationName()).thenReturn(applicationName);
+            sequenceConfig.setApplicationConfig(applicationConfig);
+            context.setSequenceConfig(sequenceConfig);
+        }
+
+        try (MockedStatic<ServerConfiguration> serverConfiguration = mockStatic(ServerConfiguration.class)) {
+            ServerConfiguration mockServerConfiguration = mock(ServerConfiguration.class);
+            serverConfiguration.when(ServerConfiguration::getInstance).thenReturn(mockServerConfiguration);
+            lenient().when(mockServerConfiguration.getFirstProperty(IdentityCoreConstants.PROXY_CONTEXT_PATH))
+                    .thenReturn(proxyContextPath);
+
+            assertEquals(FrameworkUtils.buildCallerPathRedirectURL(callerPath, context), expected);
         }
     }
 }
