@@ -4689,8 +4689,8 @@
         {% if x509.request_header_encoded is defined %}
         <X509RequestHeaderEncoded>{{x509.request_header_encoded}}</X509RequestHeaderEncoded>
         {% endif %}
-        {% if x509.header_based_authentication_enabled is defined %}
-        <HeaderBasedAuthenticationEnabled>{{x509.header_based_authentication_enabled}}</HeaderBasedAuthenticationEnabled>
+        {% if x509.trusted_certificate_validation_enabled is defined %}
+        <TrustedCertificateValidationEnabled>{{x509.trusted_certificate_validation_enabled}}</TrustedCertificateValidationEnabled>
         {% endif %}
         {% if x509.trusted_certificate is defined %}
         <TrustedCertificates>
