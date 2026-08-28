@@ -2137,7 +2137,7 @@ public class FrameworkUtilsTest extends IdentityBaseTest {
     public Object[][] provideBuildCallerPathRedirectURLData() {
 
         return new Object[][]{
-                // {applicationName, callerPath, proxyContextPath, expectedResult}
+                // applicationName, callerPath, proxyContextPath, expectedResult
 
                 {MY_ACCOUNT_APP, "/myaccount", "auth", "/auth/myaccount"},
                 {CONSOLE_APP, "/console", "auth", "/auth/console"},
@@ -2169,13 +2169,13 @@ public class FrameworkUtilsTest extends IdentityBaseTest {
     public void testBuildCallerPathRedirectURL(String applicationName, String callerPath, String proxyContextPath,
                                                String expected) throws URLBuilderException {
 
-        AuthenticationContext context = new AuthenticationContext();
+        AuthenticationContext authContext = new AuthenticationContext();
         if (applicationName != null) {
             SequenceConfig sequenceConfig = new SequenceConfig();
             ApplicationConfig applicationConfig = mock(ApplicationConfig.class);
             when(applicationConfig.getApplicationName()).thenReturn(applicationName);
             sequenceConfig.setApplicationConfig(applicationConfig);
-            context.setSequenceConfig(sequenceConfig);
+            authContext.setSequenceConfig(sequenceConfig);
         }
 
         try (MockedStatic<ServerConfiguration> serverConfiguration = mockStatic(ServerConfiguration.class)) {
@@ -2184,7 +2184,7 @@ public class FrameworkUtilsTest extends IdentityBaseTest {
             lenient().when(mockServerConfiguration.getFirstProperty(IdentityCoreConstants.PROXY_CONTEXT_PATH))
                     .thenReturn(proxyContextPath);
 
-            assertEquals(FrameworkUtils.buildCallerPathRedirectURL(callerPath, context), expected);
+            assertEquals(FrameworkUtils.buildCallerPathRedirectURL(callerPath, authContext), expected);
         }
     }
 
@@ -2192,7 +2192,7 @@ public class FrameworkUtilsTest extends IdentityBaseTest {
     public Object[][] providePrependProxyContextPathData() {
 
         return new Object[][]{
-                // {path, proxyContextPath, expectedResult}
+                // path, proxyContextPath, expectedResult
 
                 // Tenant and organization qualified cookie paths get the prefix applied.
                 {"/t/foo.com/", "auth", "/auth/t/foo.com/"},
@@ -2207,9 +2207,13 @@ public class FrameworkUtilsTest extends IdentityBaseTest {
                 // A proxy context path that resolves to the root path leaves the path untouched.
                 {"/t/foo.com/", "/", "/t/foo.com/"},
 
-                // Applying the prefix is idempotent.
+                // Applying the prefix is idempotent, including when the prefix is followed by a
+                // query string or a fragment rather than a path separator.
                 {"/auth/t/foo.com/", "auth", "/auth/t/foo.com/"},
                 {"/auth", "auth", "/auth"},
+                {"/auth?state=x", "auth", "/auth?state=x"},
+                {"/auth#fragment", "auth", "/auth#fragment"},
+                {"/auth/console?state=x", "auth", "/auth/console?state=x"},
 
                 // A path that merely starts with the same characters is still prefixed.
                 {"/authenticate", "auth", "/auth/authenticate"},

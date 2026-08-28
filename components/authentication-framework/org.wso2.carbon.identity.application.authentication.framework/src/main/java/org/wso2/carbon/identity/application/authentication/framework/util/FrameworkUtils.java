@@ -4708,7 +4708,11 @@ public class FrameworkUtils {
             return path;
         }
         if (path.equals(normalizedProxyContextPath)
-                || path.startsWith(normalizedProxyContextPath + "/")) {
+                || path.startsWith(normalizedProxyContextPath + "/")
+                || path.startsWith(normalizedProxyContextPath + "?")
+                || path.startsWith(normalizedProxyContextPath + "#")) {
+            // Already prefixed: the prefix is either the whole path, or is delimited by a path
+            // separator, a query string or a fragment.
             return path;
         }
         return normalizedProxyContextPath + path;
