@@ -2187,4 +2187,79 @@ public class FrameworkUtilsTest extends IdentityBaseTest {
             assertEquals(FrameworkUtils.buildCallerPathRedirectURL(callerPath, context), expected);
         }
     }
+
+    @DataProvider(name = "prependProxyContextPathDataProvider")
+    public Object[][] providePrependProxyContextPathData() {
+
+        return new Object[][]{
+                // {path, proxyContextPath, expectedResult}
+
+                // Tenant and organization qualified cookie paths get the prefix applied.
+                {"/t/foo.com/", "auth", "/auth/t/foo.com/"},
+                {"/o/org-id/", "auth", "/auth/o/org-id/"},
+
+                // The configured value is normalized before it is applied.
+                {"/t/foo.com/", "/auth", "/auth/t/foo.com/"},
+                {"/t/foo.com/", "auth/", "/auth/t/foo.com/"},
+                {"/t/foo.com/", "/auth/", "/auth/t/foo.com/"},
+                {"/t/foo.com/", "  auth  ", "/auth/t/foo.com/"},
+
+                // A proxy context path that resolves to the root path leaves the path untouched.
+                {"/t/foo.com/", "/", "/t/foo.com/"},
+
+                // Applying the prefix is idempotent.
+                {"/auth/t/foo.com/", "auth", "/auth/t/foo.com/"},
+                {"/auth", "auth", "/auth"},
+
+                // A path that merely starts with the same characters is still prefixed.
+                {"/authenticate", "auth", "/auth/authenticate"},
+
+                // A root path is prefixed too. The cookie sites do not rely on this: they keep the
+                // super tenant cookie at the root path instead of calling this method.
+                {"/", "auth", "/auth/"},
+
+                // Nothing to apply when the proxy context path is not configured.
+                {"/t/foo.com/", "", "/t/foo.com/"},
+                {"/t/foo.com/", null, "/t/foo.com/"},
+
+                // Values that are not server relative paths are returned as they are.
+                {"https://example.com/t/foo.com/", "auth", "https://example.com/t/foo.com/"},
+                {null, "auth", null},
+                {"", "auth", ""},
+        };
+    }
+
+    @Test(dataProvider = "prependProxyContextPathDataProvider")
+    public void testPrependProxyContextPath(String path, String proxyContextPath, String expected) {
+
+        try (MockedStatic<ServerConfiguration> serverConfiguration = mockStatic(ServerConfiguration.class)) {
+            ServerConfiguration mockServerConfiguration = mock(ServerConfiguration.class);
+            serverConfiguration.when(ServerConfiguration::getInstance).thenReturn(mockServerConfiguration);
+            lenient().when(mockServerConfiguration.getFirstProperty(IdentityCoreConstants.PROXY_CONTEXT_PATH))
+                    .thenReturn(proxyContextPath);
+
+            assertEquals(FrameworkUtils.prependProxyContextPath(path), expected);
+        }
+    }
+
+    @Test
+    public void testRemoveAuthCookieInTenantWithProxyContextPath() {
+
+        mockCookieTest();
+        try (MockedStatic<ServerConfiguration> serverConfiguration = mockStatic(ServerConfiguration.class)) {
+            ServerConfiguration mockServerConfiguration = mock(ServerConfiguration.class);
+            serverConfiguration.when(ServerConfiguration::getInstance).thenReturn(mockServerConfiguration);
+            lenient().when(mockServerConfiguration.getFirstProperty(IdentityCoreConstants.PROXY_CONTEXT_PATH))
+                    .thenReturn("auth");
+
+            FrameworkUtils.removeAuthCookie(request, response, DUMMY_TENANT_DOMAIN);
+        }
+
+        verify(response, times(1)).addCookie(cookieCaptor.capture());
+        Cookie removedCookie = cookieCaptor.getAllValues().get(0);
+        assertEquals(removedCookie.getName(), FrameworkConstants.COMMONAUTH_COOKIE);
+        assertEquals(removedCookie.getPath(),
+                "/auth" + FrameworkConstants.TENANT_CONTEXT_PREFIX + DUMMY_TENANT_DOMAIN + "/");
+    }
+
 }
