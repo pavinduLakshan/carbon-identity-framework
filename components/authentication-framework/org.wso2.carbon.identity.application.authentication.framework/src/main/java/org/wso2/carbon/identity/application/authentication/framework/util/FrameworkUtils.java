@@ -1036,13 +1036,15 @@ public class FrameworkUtils {
         if (isOrganizationQualifiedRequest()) {
             // Handling the cookie path for requests coming with the path `/o/<org-id>`.
             String organizationId = PrivilegedCarbonContext.getThreadLocalCarbonContext().getOrganizationId();
-            path = FrameworkConstants.ORGANIZATION_CONTEXT_PREFIX + organizationId + "/";
+            path = prependProxyContextPath(
+                    FrameworkConstants.ORGANIZATION_CONTEXT_PREFIX + organizationId + "/");
         } else {
             if (!IdentityTenantUtil.isSuperTenantRequiredInUrl() &&
                     MultitenantConstants.SUPER_TENANT_DOMAIN_NAME.equals(tenantDomain)) {
                 path = "/";
             } else {
-                path = FrameworkConstants.TENANT_CONTEXT_PREFIX + tenantDomain + "/";
+                path = prependProxyContextPath(
+                        FrameworkConstants.TENANT_CONTEXT_PREFIX + tenantDomain + "/");
             }
         }
         removeCookie(req, resp, FrameworkConstants.COMMONAUTH_COOKIE, SameSiteCookie.NONE, path);
@@ -4678,8 +4680,38 @@ public class FrameworkUtils {
                         .setTenant(context.getLoginTenantDomain()).setOrganization(callerOrgId)
                         .build().getAbsolutePublicURL();
             }
+        } else {
+            return prependProxyContextPath(callerPath);
         }
         return callerPath;
+    }
+
+    /**
+     * Prepend the configured proxy context path to a server relative path.
+     *
+     * @param path Server relative path, or an absolute URL.
+     * @return Path with the proxy context path applied when applicable.
+     */
+    public static String prependProxyContextPath(String path) {
+
+        if (StringUtils.isBlank(path) || !path.startsWith("/")) {
+            return path;
+        }
+        String proxyContextPath = ServerConfiguration.getInstance()
+                .getFirstProperty(IdentityCoreConstants.PROXY_CONTEXT_PATH);
+        if (StringUtils.isBlank(proxyContextPath)) {
+            return path;
+        }
+        String normalizedProxyContextPath = "/" + StringUtils.strip(proxyContextPath.trim(), "/");
+        if (ROOT_DOMAIN.equals(normalizedProxyContextPath)) {
+            // The proxy context path resolved to the root path, nothing to prepend.
+            return path;
+        }
+        if (path.equals(normalizedProxyContextPath)
+                || path.startsWith(normalizedProxyContextPath + "/")) {
+            return path;
+        }
+        return normalizedProxyContextPath + path;
     }
 
     /**
