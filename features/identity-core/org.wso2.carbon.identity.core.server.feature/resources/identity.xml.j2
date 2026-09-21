@@ -5093,6 +5093,9 @@
     </UserProfileExport>
 
     <EnableBasicAuthHandler>{{authentication.enable_basic_auth_handler}}</EnableBasicAuthHandler>
+    <!-- When set to true, this exposes the exact authentication failure reason in the Basic Authentication
+     failure response. -->
+    <ShowBasicAuthFailureReason>{{authentication.show_basic_auth_failure_reason}}</ShowBasicAuthFailureReason>
     {% if input_validation.username is defined %}
     <InputValidation>
         <Username>
