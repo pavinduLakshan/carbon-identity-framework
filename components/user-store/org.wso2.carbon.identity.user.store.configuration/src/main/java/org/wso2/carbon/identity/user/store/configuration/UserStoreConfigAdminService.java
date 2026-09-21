@@ -49,9 +49,10 @@ import javax.xml.transform.TransformerConfigurationException;
 import static org.wso2.carbon.identity.user.store.configuration.utils.SecondaryUserStoreConfigurationUtil
         .getFileBasedUserStoreDAOFactory;
 import static org.wso2.carbon.identity.user.store.configuration.utils.SecondaryUserStoreConfigurationUtil.triggerListenersOnUserStorePreStateChange;
-import static org.wso2.carbon.identity.user.store.configuration.utils.SecondaryUserStoreConfigurationUtil.validateConnectionUrlForInitExpressions;
 import static org.wso2.carbon.identity.user.store.configuration.utils.SecondaryUserStoreConfigurationUtil
         .validateForFederatedDomain;
+import static org.wso2.carbon.identity.user.store.configuration.utils.SecondaryUserStoreConfigurationUtil
+        .validateJdbcConnectionUrl;
 
 /**
  * User store config admin service.
@@ -420,7 +421,7 @@ public class UserStoreConfigAdminService extends AbstractAdmin {
                                        String connectionPassword, String messageID) throws
             IdentityUserStoreMgtException {
 
-        validateConnectionUrlForInitExpressions(connectionURL);
+        validateJdbcConnectionUrl(connectionURL);
 
         return UserStoreConfigListenersHolder.getInstance().getUserStoreConfigService().testRDBMSConnection(domainName,
                 driverName, connectionURL, username, connectionPassword, messageID);
@@ -441,7 +442,9 @@ public class UserStoreConfigAdminService extends AbstractAdmin {
         if (userStoreDTO == null) {
             return;
         }
-        Pattern pattern = Pattern.compile(EXPRESSION_LANGUAGE_REGEX);
+        // DOTALL so the expression is still found when the value spans lines. Without it a newline
+        // anywhere in the value stops the pattern matching and the check passes.
+        Pattern pattern = Pattern.compile(EXPRESSION_LANGUAGE_REGEX, Pattern.DOTALL);
         if ((StringUtils.isNotBlank(userStoreDTO.getDomainId()) &&
                 pattern.matcher(userStoreDTO.getDomainId()).matches()) ||
                 (StringUtils.isNotBlank(userStoreDTO.getDescription()) &&

@@ -48,6 +48,55 @@ public class UserStoreConfigurationConstant {
     public static final String RESERVED_USERSTORES = "ReservedUserstores.ReservedUserstore";
     public static final String INIT_REGEX = "\\s*;\\s*init\\s*=\\s*";
 
+    /**
+     * Separator between the JDBC connection URL base and its properties, and between the properties themselves.
+     */
+    public static final String CONNECTION_URL_PROPERTY_SEPARATOR = ";";
+
+    /**
+     * Separator between a connection URL property name and its value.
+     */
+    public static final String CONNECTION_URL_PROPERTY_KEY_VALUE_SEPARATOR = "=";
+
+    /**
+     * Characters a connection URL property value may contain. Excludes parentheses, quotes and whitespace so that
+     * a value cannot form a function call.
+     */
+    public static final String CONNECTION_URL_PROPERTY_VALUE_REGEX = "[A-Za-z0-9_.,+-]*";
+
+    /**
+     * Pattern a user store validation query has to match: one SELECT or VALUES statement, built only from
+     * letters, digits and the characters _ . , * $ and spaces. Matching is case insensitive.
+     *
+     * Parentheses, quotes, semicolons and slashes all fall outside the character set, so a query that matches
+     * cannot call a function, carry a path or a URL, chain a second statement, or hold a comment.
+     */
+    public static final String VALIDATION_QUERY_REGEX = "(?i)\\s*(SELECT|VALUES)\\s+[A-Za-z0-9_.,*$ ]*";
+
+    /**
+     * A backslash escaped semicolon, which H2 reads as a literal semicolon inside a property value.
+     */
+    public static final String ESCAPED_SEMICOLON = "\\;";
+
+    /**
+     * H2 connection URL properties that hand a class name to H2's class loader or run SQL at connect time.
+     * Never permitted, and not overridable by configuration.
+     *
+     * Entries must be lower case. Property names read from a connection URL are lower cased before they are
+     * matched against this list, so an upper case entry here would never match and would not be enforced.
+     */
+    public static final String[] DENIED_CONNECTION_URL_PROPERTIES = {
+            "init", "authenticator", "builtin_alias_override", "database_event_listener",
+            "java_object_serializer", "allow_literals", "default_table_engine", "default_connection"
+    };
+
+    /**
+     * identity.xml config path holding the allowed H2 connection URL property names.
+     */
+    public static final String ALLOWED_CONNECTION_URL_PROPERTY_CONFIG =
+            "ConnectionURLValidation.AllowedProperty";
+
+
     // Attribute mappings constants
     public static final String CLAIM_CONFIG = "claim-config.xml";
     public static final String DIALECTS = "Dialects";
