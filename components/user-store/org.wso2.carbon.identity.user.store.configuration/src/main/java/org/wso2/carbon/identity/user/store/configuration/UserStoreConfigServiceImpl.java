@@ -61,7 +61,9 @@ import static org.wso2.carbon.identity.user.store.configuration.utils.SecondaryU
 import static org.wso2.carbon.identity.user.store.configuration.utils.SecondaryUserStoreConfigurationUtil.triggerListenersOnUserStorePreStateChange;
 import static org.wso2.carbon.identity.user.store.configuration.utils.SecondaryUserStoreConfigurationUtil.triggerListenersOnUserStorePreUpdate;
 import static org.wso2.carbon.identity.user.store.configuration.utils.SecondaryUserStoreConfigurationUtil.triggerListenersOnUserStoresPostGet;
-import static org.wso2.carbon.identity.user.store.configuration.utils.SecondaryUserStoreConfigurationUtil.validateConnectionUrlForInitExpressions;
+import static org.wso2.carbon.identity.user.store.configuration.utils.SecondaryUserStoreConfigurationUtil.validateConnectionProperties;
+import static org.wso2.carbon.identity.user.store.configuration.utils.SecondaryUserStoreConfigurationUtil.validateJdbcConnectionUrl;
+import static org.wso2.carbon.identity.user.store.configuration.utils.SecondaryUserStoreConfigurationUtil.validateValidationQuery;
 
 /**
  * Implementation class for UserStoreConfigService.
@@ -105,7 +107,7 @@ public class UserStoreConfigServiceImpl implements UserStoreConfigService {
                                   userStoreDTO.getDomainId() + " with file-based configuration.");
                     }
                 }
-                validateConnectionUrl(userStoreDTO);
+                validateJdbcProperties(userStoreDTO);
                 SecondaryUserStoreConfigurationUtil.getFileBasedUserStoreDAOFactory().addUserStore(userStoreDTO);
             }
         } catch (UserStoreClientException e) {
@@ -137,7 +139,7 @@ public class UserStoreConfigServiceImpl implements UserStoreConfigService {
                     LOG.debug("Repository separation of user-stores has been disabled. Editing user-store " +
                               userStoreDTO.getDomainId() + " with file-based configuration.");
                 }
-                validateConnectionUrl(userStoreDTO);
+                validateJdbcProperties(userStoreDTO);
                 SecondaryUserStoreConfigurationUtil.getFileBasedUserStoreDAOFactory().updateUserStore(userStoreDTO,
                         false);
             } else if (StringUtils.isNotEmpty(userStoreDTO.getRepositoryClass())) {
@@ -147,7 +149,7 @@ public class UserStoreConfigServiceImpl implements UserStoreConfigService {
                               userStoreDTO.getRepositoryClass());
                 }
             } else {
-                validateConnectionUrl(userStoreDTO);
+                validateJdbcProperties(userStoreDTO);
                 SecondaryUserStoreConfigurationUtil.getFileBasedUserStoreDAOFactory().updateUserStore(userStoreDTO,
                         false);
             }
@@ -345,7 +347,7 @@ public class UserStoreConfigServiceImpl implements UserStoreConfigService {
             }
         }
 
-        validateConnectionUrlForInitExpressions(connectionURL);
+        validateJdbcConnectionUrl(connectionURL);
 
         WSDataSourceMetaInfo wSDataSourceMetaInfo = new WSDataSourceMetaInfo();
 
@@ -506,17 +508,28 @@ public class UserStoreConfigServiceImpl implements UserStoreConfigService {
      * Validate the userstore connection URL. Currently the init param is checked.
      *
      * @param userStoreDTO contains the userstore details.
-     * @throws IdentityUserStoreMgtException throws when the URL is invalid.
+     * @throws IdentityUserStoreMgtException throws when a property value is invalid.
      */
-    private void validateConnectionUrl(UserStoreDTO userStoreDTO) throws IdentityUserStoreMgtException {
+    private void validateJdbcProperties(UserStoreDTO userStoreDTO) throws IdentityUserStoreMgtException {
 
         PropertyDTO[] propertyDTO = userStoreDTO.getProperties();
-        for (PropertyDTO propertyDTOValue : propertyDTO) {
-            if (propertyDTOValue != null && "url".equals(propertyDTOValue.getName())) {
-                String connectionURL = propertyDTOValue.getValue();
-                validateConnectionUrlForInitExpressions(connectionURL);
+        String connectionUrl = null;
+        String connectionProperties = null;
+        for (PropertyDTO property : propertyDTO) {
+            if (property == null) {
+                continue;
+            }
+            if (JDBCRealmConstants.URL.equals(property.getName())) {
+                connectionUrl = property.getValue();
+                validateJdbcConnectionUrl(connectionUrl);
+            } else if (JDBCRealmConstants.VALIDATION_QUERY.equals(property.getName())) {
+                validateValidationQuery(property.getValue());
+            } else if (JDBCRealmConstants.CONNECTION_PROPERTIES.equals(property.getName())) {
+                connectionProperties = property.getValue();
             }
         }
+        // Checked after the loop because the rules are scoped by the driver, which the URL identifies.
+        validateConnectionProperties(connectionProperties, connectionUrl);
     }
 
     private boolean isUserStoreDisabled(PropertyDTO[] propertyDTOS) {

@@ -57,10 +57,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.xml.parsers.DocumentBuilder;
@@ -73,11 +75,17 @@ import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 
+import static org.wso2.carbon.identity.user.store.configuration.utils.UserStoreConfigurationConstant.ALLOWED_CONNECTION_URL_PROPERTY_CONFIG;
+import static org.wso2.carbon.identity.user.store.configuration.utils.UserStoreConfigurationConstant.CONNECTION_URL_PROPERTY_KEY_VALUE_SEPARATOR;
+import static org.wso2.carbon.identity.user.store.configuration.utils.UserStoreConfigurationConstant.CONNECTION_URL_PROPERTY_SEPARATOR;
+import static org.wso2.carbon.identity.user.store.configuration.utils.UserStoreConfigurationConstant.CONNECTION_URL_PROPERTY_VALUE_REGEX;
+import static org.wso2.carbon.identity.user.store.configuration.utils.UserStoreConfigurationConstant.DENIED_CONNECTION_URL_PROPERTIES;
 import static org.wso2.carbon.identity.user.store.configuration.utils.UserStoreConfigurationConstant.DEPLOYMENT_DIRECTORY;
 import static org.wso2.carbon.identity.user.store.configuration.utils.UserStoreConfigurationConstant.ENCRYPTED_PROPERTY_MASK;
+import static org.wso2.carbon.identity.user.store.configuration.utils.UserStoreConfigurationConstant.ESCAPED_SEMICOLON;
 import static org.wso2.carbon.identity.user.store.configuration.utils.UserStoreConfigurationConstant.FILE_EXTENSION_XML;
-import static org.wso2.carbon.identity.user.store.configuration.utils.UserStoreConfigurationConstant.INIT_REGEX;
 import static org.wso2.carbon.identity.user.store.configuration.utils.UserStoreConfigurationConstant.USERSTORES;
+import static org.wso2.carbon.identity.user.store.configuration.utils.UserStoreConfigurationConstant.VALIDATION_QUERY_REGEX;
 
 /**
  * Util class responsible for processing encryption and decryption over secondary user store
@@ -86,7 +94,20 @@ public class SecondaryUserStoreConfigurationUtil {
 
     private static final Log LOG = LogFactory.getLog(SecondaryUserStoreConfigurationUtil.class);
 
-    private static final Pattern initPattern = Pattern.compile(INIT_REGEX, Pattern.CASE_INSENSITIVE);
+    private static final Set<String> DENIED_PROPERTIES = new HashSet<>(Arrays.asList(DENIED_CONNECTION_URL_PROPERTIES));
+
+    // H2 JDBC URL prefixes. Anything other than the in memory and server forms is file backed.
+    private static final String H2_URL_PREFIX = "jdbc:h2:";
+
+    private static final Pattern CONNECTION_URL_PROPERTY_VALUE_PATTERN =
+            Pattern.compile(CONNECTION_URL_PROPERTY_VALUE_REGEX);
+
+    private static final Pattern VALIDATION_QUERY_PATTERN = Pattern.compile(VALIDATION_QUERY_REGEX);
+
+    /**
+     * Statement terminator. A validation query may end with one, but may not contain one anywhere else.
+     */
+    private static final String STATEMENT_TERMINATOR = ";";
 
     private SecondaryUserStoreConfigurationUtil() {
 
@@ -378,27 +399,6 @@ public class SecondaryUserStoreConfigurationUtil {
     }
 
     /**
-     * Obtain the UniqueID ID constant value from the propertyDTO object which was set well
-     * before sending the edit request.
-     *
-     * @param propertyDTOs PropertyDTO[] object passed from JSP page
-     * @return unique id string value
-     */
-    private static String getUniqueIDFromUserDTO(PropertyDTO[] propertyDTOs) {
-
-        int length = propertyDTOs.length;
-        for (int i = length - 1; i >= 0; i--) {
-            PropertyDTO propertyDTO = propertyDTOs[i];
-            if (propertyDTO != null && propertyDTO.getName() != null && propertyDTO.getName()
-                    .equalsIgnoreCase(UserStoreConfigurationConstant.UNIQUE_ID_CONSTANT)) {
-                return propertyDTO.getValue();
-            }
-        }
-
-        return null;
-    }
-
-    /**
      * Adds a property
      *
      * @param name:   Name of property
@@ -435,7 +435,7 @@ public class SecondaryUserStoreConfigurationUtil {
             throws IdentityUserStoreMgtException {
 
         if (editSecondaryUserStore) {
-            String uniqueID = getUniqueIDFromUserDTO(propertyDTOs);
+            String uniqueID = findPropertyValue(propertyDTOs, UserStoreConfigurationConstant.UNIQUE_ID_CONSTANT);
             if (uniqueID == null) {
                 throw new IdentityUserStoreMgtException("UniqueID property is not provided.");
             }
@@ -447,6 +447,9 @@ public class SecondaryUserStoreConfigurationUtil {
         Map<String, String> secondaryUserStoreProperties =
                 getSecondaryUserStorePropertiesFromTenantUserRealm(userStoreDomain);
 
+        // Read ahead: the connectionProperties rules are scoped by the driver, which the URL identifies.
+        String connectionUrl = findPropertyValue(propertyDTOs, JDBCRealmConstants.URL);
+
         for (PropertyDTO propertyDTO : propertyDTOs) {
             String propertyDTOName = propertyDTO.getName();
             if (UserStoreConfigurationConstant.UNIQUE_ID_CONSTANT.equalsIgnoreCase(propertyDTOName)) {
@@ -456,7 +459,13 @@ public class SecondaryUserStoreConfigurationUtil {
             String propertyDTOValue = propertyDTO.getValue();
             if (propertyDTOValue != null) {
                 if (JDBCRealmConstants.URL.equalsIgnoreCase(propertyDTOName)) {
-                    validateConnectionUrlForInitExpressions(propertyDTOValue);
+                    validateJdbcConnectionUrl(propertyDTOValue);
+                }
+                if (JDBCRealmConstants.VALIDATION_QUERY.equalsIgnoreCase(propertyDTOName)) {
+                    validateValidationQuery(propertyDTOValue);
+                }
+                if (JDBCRealmConstants.CONNECTION_PROPERTIES.equalsIgnoreCase(propertyDTOName)) {
+                    validateConnectionProperties(propertyDTOValue, connectionUrl);
                 }
                 boolean encrypted = false;
                 if (isPropertyToBeEncrypted(mandatoryProperties, propertyDTOName)) {
@@ -855,21 +864,194 @@ public class SecondaryUserStoreConfigurationUtil {
     }
 
     /**
-     * Validates the connection URL to ensure it does not contain INIT expressions that could pose security risks.
+     * Validates the properties of an H2 connection URL. Connection URLs of other drivers are not validated.
      *
      * @param connectionUrl The connection URL to validate.
-     * @throws IdentityUserStoreMgtException If the connection URL contains forbidden INIT expressions.
+     * @throws IdentityUserStoreMgtException If the URL carries an escaped semicolon, an unsupported property
+     *                                       value, or a property that is not allowed.
+     * @deprecated Renamed. Use {@link #validateJdbcConnectionUrl(String)}.
      */
+    @Deprecated
     public static void validateConnectionUrlForInitExpressions(String connectionUrl)
             throws IdentityUserStoreMgtException {
 
-        if (StringUtils.isNotEmpty(connectionUrl)) {
-            String validationConnectionString = connectionUrl.toLowerCase().replace("\\", "");
-            Matcher matcher = initPattern.matcher(validationConnectionString);
-            if (matcher.find()) {
-                String errorMessage = "INIT expressions are not allowed in the connection URL due to security reasons.";
-                throw new IdentityUserStoreMgtException(errorMessage);
+        validateJdbcConnectionUrl(connectionUrl);
+    }
+
+    /**
+     * Validates the properties of an H2 connection URL. Connection URLs of other drivers are not validated.
+     *
+     * @param connectionUrl The connection URL to validate.
+     * @throws IdentityUserStoreMgtException If the URL carries an escaped semicolon, an unsupported property
+     *                                       value, or a property that is not allowed.
+     */
+    public static void validateJdbcConnectionUrl(String connectionUrl)
+            throws IdentityUserStoreMgtException {
+
+        if (StringUtils.isBlank(connectionUrl)) {
+            return;
+        }
+        if (!connectionUrl.trim().toLowerCase(Locale.ENGLISH).startsWith(H2_URL_PREFIX)) {
+            return;
+        }
+
+        // File backed URLs are validated like any other. H2 always appends its own .mv.db suffix to the
+        // path, so a file URL cannot place a file of a chosen type, and a file database is the documented
+        // form for a secondary JDBC user store. What makes a URL dangerous is its properties, checked below.
+        if (connectionUrl.contains(ESCAPED_SEMICOLON)) {
+            throw new IdentityUserStoreClientException("Escaped semicolons are not allowed in the connection URL.");
+        }
+
+        // Everything before the first separator is the database locator, the rest are properties.
+        validateH2Properties(connectionUrl.split(CONNECTION_URL_PROPERTY_SEPARATOR), 1);
+    }
+
+    /**
+     * Validates the properties a user store passes to the driver through the connectionProperties pool setting.
+     *
+     * H2 reads its settings from the connection URL and from the properties the pool hands the driver, and acts
+     * on both the same way. Validating only the URL therefore leaves this as a second route to the same engine,
+     * so the settings named here are held to the same rules.
+     *
+     * @param connectionProperties Value of the connectionProperties user store property. May be null or empty.
+     * @param connectionUrl        Connection URL of the same user store, used to scope this to H2.
+     * @throws IdentityUserStoreMgtException If a property carries an unsupported value or is not allowed.
+     */
+    public static void validateConnectionProperties(String connectionProperties, String connectionUrl)
+            throws IdentityUserStoreMgtException {
+
+        if (StringUtils.isBlank(connectionProperties) || StringUtils.isBlank(connectionUrl)) {
+            return;
+        }
+        if (!connectionUrl.trim().toLowerCase(Locale.ENGLISH).startsWith(H2_URL_PREFIX)) {
+            return;
+        }
+        // Unlike a connection URL there is no locator to skip, so every segment is a property.
+        validateH2Properties(connectionProperties.split(CONNECTION_URL_PROPERTY_SEPARATOR), 0);
+    }
+
+    /**
+     * Returns the value of a named property, or null when it is not present.
+     *
+     * Searched from the end, so a name given more than once resolves to the last value. That is the value the
+     * realm configuration keeps, and the one the pool will connect with.
+     *
+     * @param propertyDTOs Properties of the user store.
+     * @param propertyName Name to look for, compared ignoring case.
+     * @return The property value, or null.
+     */
+    private static String findPropertyValue(PropertyDTO[] propertyDTOs, String propertyName) {
+
+        for (int i = propertyDTOs.length - 1; i >= 0; i--) {
+            PropertyDTO propertyDTO = propertyDTOs[i];
+            if (propertyDTO != null && propertyName.equalsIgnoreCase(propertyDTO.getName())) {
+                return propertyDTO.getValue();
             }
+        }
+        return null;
+    }
+
+    /**
+     * Applies the H2 property rules to name and value pairs taken from a connection URL or from
+     * connectionProperties.
+     *
+     * @param segments   Separator delimited name and value pairs.
+     * @param firstIndex Index of the first segment that is a property.
+     * @throws IdentityUserStoreMgtException If a property carries an unsupported value or is not allowed.
+     */
+    private static void validateH2Properties(String[] segments, int firstIndex)
+            throws IdentityUserStoreMgtException {
+
+        Set<String> allowedProperties = getAllowedConnectionUrlProperties();
+
+        for (int i = firstIndex; i < segments.length; i++) {
+            if (StringUtils.isBlank(segments[i])) {
+                continue;
+            }
+            String property = segments[i].trim();
+            int separatorIndex = property.indexOf(CONNECTION_URL_PROPERTY_KEY_VALUE_SEPARATOR);
+            String propertyName = separatorIndex < 0 ? property : property.substring(0, separatorIndex);
+            propertyName = propertyName.trim();
+            String propertyValue = separatorIndex < 0 ? "" : property.substring(separatorIndex + 1).trim();
+            // H2 evaluates a property value as an expression, so it has to be restricted to a literal.
+            if (!CONNECTION_URL_PROPERTY_VALUE_PATTERN.matcher(propertyValue).matches()) {
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Rejected an unsupported value for the connection property: " + propertyName);
+                }
+                throw new IdentityUserStoreClientException("The value given for the connection property '"
+                        + propertyName + "' is not allowed. Values may contain letters, digits, and the characters "
+                        + "_ . , + - only.");
+            }
+            if (DENIED_PROPERTIES.contains(propertyName.toLowerCase(Locale.ENGLISH))) {
+                throw new IdentityUserStoreClientException("The connection property '" + propertyName
+                        + "' is never allowed.");
+            }
+            if (allowedProperties.isEmpty()) {
+                // Misconfiguration, already logged. The escaped semicolon and value rules still hold.
+                continue;
+            }
+            if (!allowedProperties.contains(propertyName.toLowerCase(Locale.ENGLISH))) {
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Rejected a connection property that is not allowed: " + propertyName);
+                }
+                throw new IdentityUserStoreClientException("The connection property '" + propertyName
+                        + "' is not allowed. Allowed properties can be extended through the '"
+                        + ALLOWED_CONNECTION_URL_PROPERTY_CONFIG + "' configuration.");
+            }
+        }
+    }
+
+    /**
+     * Reads the allowed H2 connection URL property names from identity.xml.
+     *
+     * @return Allowed property names, lower cased. Empty if the configuration is missing.
+     */
+    private static Set<String> getAllowedConnectionUrlProperties() {
+
+        Set<String> allowedProperties = new HashSet<>();
+        for (String property : IdentityUtil.getPropertyAsList(ALLOWED_CONNECTION_URL_PROPERTY_CONFIG)) {
+            if (StringUtils.isNotBlank(property)) {
+                allowedProperties.add(property.trim().toLowerCase(Locale.ENGLISH));
+            }
+        }
+        if (allowedProperties.isEmpty()) {
+            LOG.error("No user store connection URL properties are configured under '"
+                    + ALLOWED_CONNECTION_URL_PROPERTY_CONFIG + "'. The shipped defaults are missing from "
+                    + "identity.xml, so connection URL property names cannot be checked. Escaped semicolons and "
+                    + "unsupported property values are still rejected.");
+        }
+        return allowedProperties;
+    }
+
+    /**
+     * Checks that a user store validation query is a plain read only statement.
+     *
+     * A blank query is accepted and leaves the connection pool on its default behaviour. Anything else has to
+     * begin with SELECT or VALUES, and may be built only from letters, digits and the characters _ . , * $ and
+     * spaces. One trailing semicolon is dropped before the check; a semicolon anywhere else, a parenthesis or a
+     * quote fails it, so a value that reaches the pool can neither chain a second statement nor call a function.
+     *
+     * @param validationQuery The validation query to check. May be null or empty.
+     * @throws IdentityUserStoreMgtException If the query is not a plain read only statement.
+     */
+    public static void validateValidationQuery(String validationQuery) throws IdentityUserStoreMgtException {
+
+        if (StringUtils.isBlank(validationQuery)) {
+            return;
+        }
+        String query = validationQuery.trim();
+        // A single trailing semicolon cannot carry a second statement, so it is tolerated for compatibility.
+        // Any other semicolon survives and fails the match below.
+        if (query.endsWith(STATEMENT_TERMINATOR)) {
+            query = query.substring(0, query.length() - STATEMENT_TERMINATOR.length()).trim();
+        }
+        if (!VALIDATION_QUERY_PATTERN.matcher(query).matches()) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Rejected a user store validation query that is not a plain read only statement.");
+            }
+            // A client exception so the reason reaches the administrator as a 400 instead of a generic 500.
+            throw new IdentityUserStoreClientException("The validation query must be a single SELECT or VALUES "
+                    + "statement built only from letters, digits and the characters _ . , * $ and spaces.");
         }
     }
 }
