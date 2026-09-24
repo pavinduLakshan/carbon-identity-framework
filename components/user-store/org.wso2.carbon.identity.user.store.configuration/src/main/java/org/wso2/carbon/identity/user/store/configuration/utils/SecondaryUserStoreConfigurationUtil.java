@@ -98,9 +98,6 @@ public class SecondaryUserStoreConfigurationUtil {
 
     // H2 JDBC URL prefixes. Anything other than the in memory and server forms is file backed.
     private static final String H2_URL_PREFIX = "jdbc:h2:";
-    private static final String H2_MEMORY_URL_PREFIX = "jdbc:h2:mem:";
-    private static final String H2_TCP_URL_PREFIX = "jdbc:h2:tcp://";
-    private static final String H2_SSL_URL_PREFIX = "jdbc:h2:ssl://";
 
     private static final Pattern CONNECTION_URL_PROPERTY_VALUE_PATTERN =
             Pattern.compile(CONNECTION_URL_PROPERTY_VALUE_REGEX);
@@ -894,19 +891,13 @@ public class SecondaryUserStoreConfigurationUtil {
         if (StringUtils.isBlank(connectionUrl)) {
             return;
         }
-        String trimmedUrl = connectionUrl.trim();
-        String normalizedUrl = trimmedUrl.toLowerCase(Locale.ENGLISH);
-
-        if (!normalizedUrl.startsWith(H2_URL_PREFIX)) {
+        if (!connectionUrl.trim().toLowerCase(Locale.ENGLISH).startsWith(H2_URL_PREFIX)) {
             return;
         }
 
-        // Compared in its original case. H2 only reads the lower case mem:, tcp:// and ssl:// forms as non
-        // file, so jdbc:h2:MEM: is a file path to H2 and must not be let through as an in memory database.
-        if (isFileModeH2Url(trimmedUrl)) {
-            throw new IdentityUserStoreClientException("File based JDBC connection URLs are not allowed.");
-        }
-
+        // File backed URLs are validated like any other. H2 always appends its own .mv.db suffix to the
+        // path, so a file URL cannot place a file of a chosen type, and a file database is the documented
+        // form for a secondary JDBC user store. What makes a URL dangerous is its properties, checked below.
         if (connectionUrl.contains(ESCAPED_SEMICOLON)) {
             throw new IdentityUserStoreClientException("Escaped semicolons are not allowed in the connection URL.");
         }
@@ -1008,22 +999,6 @@ public class SecondaryUserStoreConfigurationUtil {
                         + ALLOWED_CONNECTION_URL_PROPERTY_CONFIG + "' configuration.");
             }
         }
-    }
-
-    /**
-     * Returns whether an H2 URL is file backed, which would let a connection test create a file anywhere the
-     * server can write. The in memory and server forms are the only ones that are not.
-     *
-     * @param url Trimmed H2 JDBC connection URL in its original case. H2 recognises only the lower case
-     *            mem:, tcp:// and ssl:// prefixes, so lower casing before this check would let
-     *            jdbc:h2:MEM: pass as in memory while H2 treats it as a file path.
-     * @return True if the URL is a file mode database URL.
-     */
-    private static boolean isFileModeH2Url(String url) {
-
-        return !(url.startsWith(H2_MEMORY_URL_PREFIX)
-                || url.startsWith(H2_TCP_URL_PREFIX)
-                || url.startsWith(H2_SSL_URL_PREFIX));
     }
 
     /**
