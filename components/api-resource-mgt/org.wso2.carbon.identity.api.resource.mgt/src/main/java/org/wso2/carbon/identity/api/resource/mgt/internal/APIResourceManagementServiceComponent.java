@@ -60,6 +60,8 @@ public class APIResourceManagementServiceComponent {
                     new AuthorizationDetailsTypeManagerImpl(), null);
             APIResourceManagementServiceComponentHolder.getInstance()
                     .setRichAuthorizationRequestsEnabled(this.isRichAuthorizationRequestsEnabled());
+            APIResourceManagementServiceComponentHolder.getInstance()
+                    .setPreserveIntegralNumbersInSchemaResponse(this.isPreserveIntegralNumbersInSchemaResponse());
             // Register system APIs in the super tenant.
             APIResourceManagementUtil.addSystemAPIs();
             LOG.debug("API resource management bundle is activated");
@@ -145,5 +147,16 @@ public class APIResourceManagementServiceComponent {
 
         return Boolean.parseBoolean(IdentityUtil.getProperty(APIResourceManagementConstants
                 .APIResourceConfigBuilderConstants.RICH_AUTHORIZATION_REQUESTS_ENABLED));
+    }
+
+    /**
+     * Checks the OAuth.AuthorizationDetailsSchema.PreserveIntegralNumbersInResponse config at identity.xml.
+     *
+     * @return {@code true} if integral schema numbers should be preserved in responses; {@code false} otherwise.
+     */
+    private boolean isPreserveIntegralNumbersInSchemaResponse() {
+
+        return Boolean.parseBoolean(IdentityUtil.getProperty(APIResourceManagementConstants
+                .APIResourceConfigBuilderConstants.PRESERVE_INTEGRAL_NUMBERS_IN_SCHEMA_RESPONSE));
     }
 }

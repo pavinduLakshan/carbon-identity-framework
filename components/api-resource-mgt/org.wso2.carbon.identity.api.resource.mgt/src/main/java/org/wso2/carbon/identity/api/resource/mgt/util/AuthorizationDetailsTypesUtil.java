@@ -40,20 +40,22 @@ public class AuthorizationDetailsTypesUtil {
     private static final Log LOG = LogFactory.getLog(AuthorizationDetailsTypesUtil.class);
     /*
      * By default, Gson parses every JSON number of a Map<String, Object> as a Double. JSON schema validators such as
-     * Vert.x cast integer keywords (e.g. minItems, maxItems) directly to Integer, hence integral values are preserved
-     * as Integer, or as Long when they exceed the Integer range.
+     * Vert.x cast integer keywords (e.g. minItems, maxItems) directly to Integer, hence integral values (including
+     * ones written as 1.0) are returned as Integer, or as Long when they exceed the Integer range.
      */
     private static final ToNumberStrategy INTEGRAL_PRESERVING_NUMBER_STRATEGY = in -> {
         final Number number = ToNumberPolicy.LONG_OR_DOUBLE.readNumber(in);
-        if (number instanceof Long && number.longValue() >= Integer.MIN_VALUE
-                && number.longValue() <= Integer.MAX_VALUE) {
-            return number.intValue();
+        final double doubleValue = number.doubleValue();
+        if (doubleValue >= Integer.MIN_VALUE && doubleValue <= Integer.MAX_VALUE
+                && doubleValue == Math.rint(doubleValue)) {
+            return (int) doubleValue;
         }
         return number;
     };
     private static final Gson GSON = new GsonBuilder()
             .setObjectToNumberStrategy(INTEGRAL_PRESERVING_NUMBER_STRATEGY)
             .create();
+    private static final Gson LEGACY_GSON = new Gson();
     private static final Type SCHEMA_TYPE = new TypeToken<Map<String, Object>>() { }.getType();
 
     /**
@@ -65,6 +67,22 @@ public class AuthorizationDetailsTypesUtil {
     public static Map<String, Object> parseSchema(final String schema) {
 
         return GSON.fromJson(schema, SCHEMA_TYPE);
+    }
+
+    /**
+     * Parses a JSON schema to be returned from the API resource management services. Integral numbers are preserved
+     * only if the OAuth.AuthorizationDetailsSchema.PreserveIntegralNumbersInResponse config is enabled. Otherwise,
+     * every number is returned as a {@code Double} to keep the legacy response format (e.g. 1.0).
+     *
+     * @param schema the JSON schema string to be parsed. It must be a valid JSON string.
+     * @return a {@code Map<String, Object>} representing the parsed JSON schema.
+     */
+    public static Map<String, Object> parseSchemaForResponse(final String schema) {
+
+        if (APIResourceManagementServiceComponentHolder.getInstance().isPreserveIntegralNumbersInSchemaResponse()) {
+            return parseSchema(schema);
+        }
+        return LEGACY_GSON.fromJson(schema, SCHEMA_TYPE);
     }
 
     /**

@@ -19,7 +19,9 @@
 package org.wso2.carbon.identity.api.resource.mgt;
 
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
+import org.wso2.carbon.identity.api.resource.mgt.internal.APIResourceManagementServiceComponentHolder;
 import org.wso2.carbon.identity.api.resource.mgt.util.AuthorizationDetailsTypesUtil;
 
 import java.util.List;
@@ -32,9 +34,15 @@ public class AuthorizationDetailsTypesUtilTest {
 
     private static final String SCHEMA = "{\"type\":\"object\",\"required\":[\"type\"],\"minProperties\":1," +
             "\"properties\":{\"type\":{\"type\":\"string\",\"const\":\"test_type\"}," +
-            "\"actions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"minItems\":1,\"maxItems\":3}," +
+            "\"actions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"minItems\":1,\"maxItems\":3.0}," +
             "\"amount\":{\"type\":\"number\",\"minimum\":0.5,\"maximum\":9999999999}}," +
             "\"allOf\":[{\"maxProperties\":5}]}";
+
+    @AfterMethod
+    public void tearDown() {
+
+        APIResourceManagementServiceComponentHolder.getInstance().setPreserveIntegralNumbersInSchemaResponse(false);
+    }
 
     @Test
     @SuppressWarnings("unchecked")
@@ -52,6 +60,28 @@ public class AuthorizationDetailsTypesUtilTest {
         Assert.assertEquals(allOf.get("maxProperties"), 5);
         Assert.assertEquals(amount.get("minimum"), 0.5d);
         Assert.assertEquals(amount.get("maximum"), 9999999999L);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testParseSchemaForResponseReturnsLegacyDecimalsByDefault() {
+
+        final Map<String, Object> schema = AuthorizationDetailsTypesUtil.parseSchemaForResponse(SCHEMA);
+        final Map<String, Object> actions = (Map<String, Object>) ((Map<String, Object>) schema.get("properties"))
+                .get("actions");
+
+        Assert.assertEquals(schema.get("minProperties"), 1.0d);
+        Assert.assertEquals(actions.get("minItems"), 1.0d);
+        Assert.assertEquals(actions.get("maxItems"), 3.0d);
+    }
+
+    @Test
+    public void testParseSchemaForResponsePreservesIntegralValuesWhenEnabled() {
+
+        APIResourceManagementServiceComponentHolder.getInstance().setPreserveIntegralNumbersInSchemaResponse(true);
+
+        Assert.assertEquals(AuthorizationDetailsTypesUtil.parseSchemaForResponse(SCHEMA),
+                AuthorizationDetailsTypesUtil.parseSchema(SCHEMA));
     }
 
     @Test
