@@ -32,7 +32,6 @@ public class APIResourceManagementServiceComponentHolder {
     private static final APIResourceManagementServiceComponentHolder instance =
             new APIResourceManagementServiceComponentHolder();
     private boolean isRichAuthorizationRequestsEnabled;
-    private boolean isPreserveIntegralNumbersInSchemaResponse;
 
     private APIResourceManagementServiceComponentHolder() {
 
@@ -102,21 +101,5 @@ public class APIResourceManagementServiceComponentHolder {
     public void setRichAuthorizationRequestsEnabled(final boolean isRichAuthorizationRequestsEnabled) {
 
         this.isRichAuthorizationRequestsEnabled = isRichAuthorizationRequestsEnabled;
-    }
-
-    /**
-     * Checks if integral numbers of authorization details type schemas are preserved as integers when the schemas
-     * are returned from the API resource management services.
-     *
-     * @return {@code true} if integral numbers are preserved; {@code false} to return them as decimals (legacy).
-     */
-    public boolean isPreserveIntegralNumbersInSchemaResponse() {
-
-        return this.isPreserveIntegralNumbersInSchemaResponse;
-    }
-
-    public void setPreserveIntegralNumbersInSchemaResponse(final boolean isPreserveIntegralNumbersInSchemaResponse) {
-
-        this.isPreserveIntegralNumbersInSchemaResponse = isPreserveIntegralNumbersInSchemaResponse;
     }
 }

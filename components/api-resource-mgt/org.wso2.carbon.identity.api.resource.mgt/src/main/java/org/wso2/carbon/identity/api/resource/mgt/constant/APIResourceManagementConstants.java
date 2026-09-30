@@ -108,8 +108,6 @@ public class APIResourceManagementConstants {
         public static final String DISABLED = "disabled";
         public static final String TENANT_ADMIN_TYPE = "TENANT_ADMIN";
         public static final String RICH_AUTHORIZATION_REQUESTS_ENABLED = "OAuth.EnableRichAuthorizationRequests";
-        public static final String PRESERVE_INTEGRAL_NUMBERS_IN_SCHEMA_RESPONSE =
-                "OAuth.AuthorizationDetailsSchema.PreserveIntegralNumbersInResponse";
 
     }
 

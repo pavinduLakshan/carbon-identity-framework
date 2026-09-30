@@ -19,9 +19,7 @@
 package org.wso2.carbon.identity.api.resource.mgt;
 
 import org.testng.Assert;
-import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
-import org.wso2.carbon.identity.api.resource.mgt.internal.APIResourceManagementServiceComponentHolder;
 import org.wso2.carbon.identity.api.resource.mgt.util.AuthorizationDetailsTypesUtil;
 
 import java.util.List;
@@ -38,17 +36,11 @@ public class AuthorizationDetailsTypesUtilTest {
             "\"amount\":{\"type\":\"number\",\"minimum\":0.5,\"maximum\":9999999999}}," +
             "\"allOf\":[{\"maxProperties\":5}]}";
 
-    @AfterMethod
-    public void tearDown() {
-
-        APIResourceManagementServiceComponentHolder.getInstance().setPreserveIntegralNumbersInSchemaResponse(false);
-    }
-
     @Test
     @SuppressWarnings("unchecked")
-    public void testParseSchemaPreservesIntegralValues() {
+    public void testParseSchemaForValidationPreservesIntegralValues() {
 
-        final Map<String, Object> schema = AuthorizationDetailsTypesUtil.parseSchema(SCHEMA);
+        final Map<String, Object> schema = AuthorizationDetailsTypesUtil.parseSchemaForValidation(SCHEMA);
         final Map<String, Object> properties = (Map<String, Object>) schema.get("properties");
         final Map<String, Object> actions = (Map<String, Object>) properties.get("actions");
         final Map<String, Object> amount = (Map<String, Object>) properties.get("amount");
@@ -64,33 +56,14 @@ public class AuthorizationDetailsTypesUtilTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    public void testParseSchemaForResponseReturnsLegacyDecimalsByDefault() {
+    public void testParseSchemaKeepsExistingNumberFormat() {
 
-        final Map<String, Object> schema = AuthorizationDetailsTypesUtil.parseSchemaForResponse(SCHEMA);
+        final Map<String, Object> schema = AuthorizationDetailsTypesUtil.parseSchema(SCHEMA);
         final Map<String, Object> actions = (Map<String, Object>) ((Map<String, Object>) schema.get("properties"))
                 .get("actions");
 
         Assert.assertEquals(schema.get("minProperties"), 1.0d);
         Assert.assertEquals(actions.get("minItems"), 1.0d);
         Assert.assertEquals(actions.get("maxItems"), 3.0d);
-    }
-
-    @Test
-    public void testParseSchemaForResponsePreservesIntegralValuesWhenEnabled() {
-
-        APIResourceManagementServiceComponentHolder.getInstance().setPreserveIntegralNumbersInSchemaResponse(true);
-
-        Assert.assertEquals(AuthorizationDetailsTypesUtil.parseSchemaForResponse(SCHEMA),
-                AuthorizationDetailsTypesUtil.parseSchema(SCHEMA));
-    }
-
-    @Test
-    public void testSchemaRoundTrip() {
-
-        final Map<String, Object> schema = AuthorizationDetailsTypesUtil.parseSchema(SCHEMA);
-
-        Assert.assertEquals(AuthorizationDetailsTypesUtil.parseSchema(AuthorizationDetailsTypesUtil
-                .toJsonString(schema)), schema);
-        Assert.assertTrue(AuthorizationDetailsTypesUtil.toJsonString(schema).contains("\"minItems\":1,"));
     }
 }

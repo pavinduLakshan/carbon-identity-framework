@@ -38,6 +38,7 @@ import java.util.Map;
 public class AuthorizationDetailsTypesUtil {
 
     private static final Log LOG = LogFactory.getLog(AuthorizationDetailsTypesUtil.class);
+    private static final Gson GSON = new Gson();
     /*
      * By default, Gson parses every JSON number of a Map<String, Object> as a Double. JSON schema validators such as
      * Vert.x cast integer keywords (e.g. minItems, maxItems) directly to Integer, hence integral values (including
@@ -52,10 +53,9 @@ public class AuthorizationDetailsTypesUtil {
         }
         return number;
     };
-    private static final Gson GSON = new GsonBuilder()
+    private static final Gson INTEGRAL_PRESERVING_GSON = new GsonBuilder()
             .setObjectToNumberStrategy(INTEGRAL_PRESERVING_NUMBER_STRATEGY)
             .create();
-    private static final Gson LEGACY_GSON = new Gson();
     private static final Type SCHEMA_TYPE = new TypeToken<Map<String, Object>>() { }.getType();
 
     /**
@@ -70,19 +70,16 @@ public class AuthorizationDetailsTypesUtil {
     }
 
     /**
-     * Parses a JSON schema to be returned from the API resource management services. Integral numbers are preserved
-     * only if the OAuth.AuthorizationDetailsSchema.PreserveIntegralNumbersInResponse config is enabled. Otherwise,
-     * every number is returned as a {@code Double} to keep the legacy response format (e.g. 1.0).
+     * Parses a JSON schema into a map structure to be used for authorization details schema validation. Unlike
+     * {@link #parseSchema(String)}, integral numbers are returned as {@code Integer} (or {@code Long}) instead of
+     * {@code Double}, as JSON schema validators expect integer keywords such as {@code minItems} to be integers.
      *
      * @param schema the JSON schema string to be parsed. It must be a valid JSON string.
      * @return a {@code Map<String, Object>} representing the parsed JSON schema.
      */
-    public static Map<String, Object> parseSchemaForResponse(final String schema) {
+    public static Map<String, Object> parseSchemaForValidation(final String schema) {
 
-        if (APIResourceManagementServiceComponentHolder.getInstance().isPreserveIntegralNumbersInSchemaResponse()) {
-            return parseSchema(schema);
-        }
-        return LEGACY_GSON.fromJson(schema, SCHEMA_TYPE);
+        return INTEGRAL_PRESERVING_GSON.fromJson(schema, SCHEMA_TYPE);
     }
 
     /**

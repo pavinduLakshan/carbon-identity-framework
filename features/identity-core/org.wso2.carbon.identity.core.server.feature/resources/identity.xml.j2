@@ -1478,15 +1478,6 @@
             Default value : false
         -->
         <EnableRichAuthorizationRequests>{{oauth.enable_rich_authorization_requests}}</EnableRichAuthorizationRequests>
-        <AuthorizationDetailsSchema>
-            <!--
-                When enabled, integral numbers of authorization details type schemas (e.g. minItems) are returned as
-                integers (1) by the API resource management APIs. When disabled, they are returned as decimals (1.0).
-                This does not affect authorization details validation.
-                Default value : false
-            -->
-            <PreserveIntegralNumbersInResponse>{{oauth.authorization_details_schema.preserve_integral_numbers_in_response}}</PreserveIntegralNumbersInResponse>
-        </AuthorizationDetailsSchema>
         <ReturnSpIdToApplication>{{oauth.return_sp_id_to_apps}}</ReturnSpIdToApplication>
         <ReturnOnlyAppAssociatedRolesInJWTToken>{{oauth.jwt.return_only_app_associated_roles}}</ReturnOnlyAppAssociatedRolesInJWTToken>
         <Callback>
