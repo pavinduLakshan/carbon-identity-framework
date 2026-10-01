@@ -40,6 +40,7 @@ import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
+import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
@@ -53,6 +54,7 @@ public class AuthParameterFilter implements Filter {
 
     private static final String DATA_API_PATH = "/api/identity/auth/v1.1/";
     private static final String SESSION_DATA_KEY = "sessionDataKey";
+    private static final String NONCE_COOKIE_PREFIX = "sessionNonceCookie";
     private static final String SESSION_DATA_KEY_CONSENT = "sessionDataKeyConsent";
     private static final String ERROR_KEY = "errorKey";
 
@@ -111,11 +113,43 @@ public class AuthParameterFilter implements Filter {
     private HttpServletRequest getServletRequestWithParams(ServletRequest servletRequest, String key)
             throws AuthenticationEndpointException {
 
-        String authAPIURL = buildAPIPath(key, servletRequest.getParameter(key));
-        String contextProperties = AuthContextAPIClient.getContextProperties(authAPIURL);
+        String keyValue = servletRequest.getParameter(key);
+        String authAPIURL = buildAPIPath(key, keyValue);
+        String nonceCookieHeader = buildNonceCookieHeader(servletRequest, key, keyValue);
+        String contextProperties = StringUtils.isNotBlank(nonceCookieHeader)
+                ? AuthContextAPIClient.getContextProperties(authAPIURL, nonceCookieHeader)
+                : AuthContextAPIClient.getContextProperties(authAPIURL);
         Gson gson = new Gson();
         Map<String, Object> cachedParams = gson.fromJson(contextProperties, Map.class);
         return new AuthenticationRequestWrapper((HttpServletRequest) servletRequest, cachedParams);
+    }
+
+    /**
+     * Build the Cookie header carrying the per-login session nonce cookie for the given sessionDataKey, if it is
+     * present in the incoming request. Returns null when not applicable.
+     *
+     * @param servletRequest Incoming servlet request from the browser.
+     * @param key            The key name being resolved.
+     * @param keyValue       The value of the key (the sessionDataKey).
+     * @return Cookie header value, or null.
+     */
+    private String buildNonceCookieHeader(ServletRequest servletRequest, String key, String keyValue) {
+
+        if (!SESSION_DATA_KEY.equals(key) || StringUtils.isBlank(keyValue)
+                || !(servletRequest instanceof HttpServletRequest)) {
+            return null;
+        }
+        Cookie[] cookies = ((HttpServletRequest) servletRequest).getCookies();
+        if (cookies == null) {
+            return null;
+        }
+        String nonceCookieName = NONCE_COOKIE_PREFIX + "-" + keyValue;
+        for (Cookie cookie : cookies) {
+            if (nonceCookieName.equals(cookie.getName())) {
+                return nonceCookieName + "=" + cookie.getValue();
+            }
+        }
+        return null;
     }
 
     /**
