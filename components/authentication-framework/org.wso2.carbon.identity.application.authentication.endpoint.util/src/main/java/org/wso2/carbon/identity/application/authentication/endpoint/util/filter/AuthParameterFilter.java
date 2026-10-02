@@ -125,12 +125,11 @@ public class AuthParameterFilter implements Filter {
     }
 
     /**
-     * Build the Cookie header carrying the per-login session nonce cookie for the given sessionDataKey, if it is
-     * present in the incoming request. Returns null when not applicable.
+     * Build the Cookie header carrying the session nonce cookie for the given sessionDataKey.
      *
-     * @param servletRequest Incoming servlet request from the browser.
+     * @param servletRequest Incoming servlet request.
      * @param key            The key name being resolved.
-     * @param keyValue       The value of the key (the sessionDataKey).
+     * @param keyValue       The value of the key.
      * @return Cookie header value, or null.
      */
     private String buildNonceCookieHeader(ServletRequest servletRequest, String key, String keyValue) {

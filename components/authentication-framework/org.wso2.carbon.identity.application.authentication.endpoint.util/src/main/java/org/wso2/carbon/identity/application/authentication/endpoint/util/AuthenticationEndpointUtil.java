@@ -383,7 +383,7 @@ public class AuthenticationEndpointUtil {
      * Send GET request with client authentication, optionally forwarding a Cookie header, and return data.
      *
      * @param backendURL   The URL of the backend service.
-     * @param cookieHeader Value for the Cookie header to forward (e.g. the per-login session nonce cookie), or null.
+     * @param cookieHeader Value for the Cookie header to forward, or null.
      * @return Data which was received from the backend service.
      */
     public static String sendGetRequest(String backendURL, String cookieHeader) {

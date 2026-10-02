@@ -42,7 +42,7 @@ public class AuthContextAPIClient {
      * Send GET request with client authentication, forwarding the given Cookie header, and return data.
      *
      * @param backendURL   The URL of the backend service.
-     * @param cookieHeader Value for the Cookie header to forward (e.g. the per-login session nonce cookie).
+     * @param cookieHeader Value for the Cookie header to forward.
      * @return Data which was received from the backend service.
      */
     public static String getContextProperties(String backendURL, String cookieHeader) {
