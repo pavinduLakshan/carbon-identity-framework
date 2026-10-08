@@ -31,6 +31,8 @@ import org.wso2.carbon.identity.action.management.api.service.ActionValidator;
 import org.wso2.carbon.identity.action.management.internal.constant.ActionMgtConstants;
 import org.wso2.carbon.identity.action.management.internal.util.ActionManagementConfig;
 import org.wso2.carbon.identity.action.management.internal.util.ActionManagementExceptionHandler;
+import org.wso2.carbon.identity.base.IdentityException;
+import org.wso2.carbon.identity.core.util.OutboundRequestFilter;
 
 import java.util.List;
 import java.util.regex.Pattern;
@@ -261,6 +263,16 @@ public class DefaultActionValidator implements ActionValidator {
         if (!isValidUri) {
             throw ActionManagementExceptionHandler.handleClientException(
                     ErrorMessage.ERROR_INVALID_ACTION_REQUEST_FIELD, ActionMgtConstants.ENDPOINT_URI_FIELD);
+        }
+        if (OutboundRequestFilter.isEnforcedForActions()) {
+            try {
+                OutboundRequestFilter.validate(uri);
+            } catch (IdentityException e) {
+                // Reported as an invalid field; the rule that refused it goes to the log only.
+                LOG.debug("Action endpoint URI refused by the outbound request policy: " + e.getMessage());
+                throw ActionManagementExceptionHandler.handleClientException(
+                        ErrorMessage.ERROR_INVALID_ACTION_REQUEST_FIELD, ActionMgtConstants.ENDPOINT_URI_FIELD);
+            }
         }
     }
 

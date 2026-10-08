@@ -28,6 +28,8 @@ import org.wso2.carbon.identity.action.management.api.exception.ActionMgtClientE
 import org.wso2.carbon.identity.action.management.api.service.impl.DefaultActionValidator;
 import org.wso2.carbon.identity.action.management.internal.util.ActionManagementConfig;
 import org.wso2.carbon.identity.core.util.IdentityConfigParser;
+import org.wso2.carbon.identity.core.util.IdentityUtil;
+import org.wso2.carbon.identity.core.util.OutboundRequestFilter;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -35,6 +37,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 
@@ -411,6 +414,58 @@ public class ActionValidatorTest {
             actionValidator.doValidateAllowedParams(allowedParametersInAction);
         } catch (ActionMgtClientException e) {
             Assert.assertEquals(e.getMessage(), ERROR_NOT_ALLOWED_PARAMETER);
+        }
+    }
+
+    private static final String ENFORCE_OUTBOUND_XPATH = "Actions.EnforceOutboundRequestFilter";
+
+    @Test
+    public void testEndpointRefusedByTheOutboundPolicyIsRejected() {
+
+        try (org.mockito.MockedStatic<IdentityUtil> identityUtil =
+                     org.mockito.Mockito.mockStatic(IdentityUtil.class);
+             org.mockito.MockedStatic<OutboundRequestFilter> filter =
+                     org.mockito.Mockito.mockStatic(OutboundRequestFilter.class, CALLS_REAL_METHODS)) {
+            identityUtil.when(() -> IdentityUtil.getProperty(org.mockito.Mockito.anyString())).thenReturn(null);
+            identityUtil.when(() -> IdentityUtil.getProperty(ENFORCE_OUTBOUND_XPATH)).thenReturn("true");
+            filter.when(() -> OutboundRequestFilter.isAllowed(org.mockito.Mockito.anyString())).thenReturn(false);
+
+            actionValidator.validateEndpointUri("https://blocked.example.com/action");
+            Assert.fail("Expected the endpoint to be rejected.");
+        } catch (ActionMgtClientException e) {
+            // Same message a malformed URI gets, so the response is not an oracle.
+            Assert.assertEquals(e.getDescription(), "Endpoint URI is invalid.");
+        }
+    }
+
+    @Test
+    public void testPermittedEndpointIsAcceptedWhenEnforced() throws ActionMgtClientException {
+
+        try (org.mockito.MockedStatic<IdentityUtil> identityUtil =
+                     org.mockito.Mockito.mockStatic(IdentityUtil.class);
+             org.mockito.MockedStatic<OutboundRequestFilter> filter =
+                     org.mockito.Mockito.mockStatic(OutboundRequestFilter.class, CALLS_REAL_METHODS)) {
+            identityUtil.when(() -> IdentityUtil.getProperty(org.mockito.Mockito.anyString())).thenReturn(null);
+            identityUtil.when(() -> IdentityUtil.getProperty(ENFORCE_OUTBOUND_XPATH)).thenReturn("true");
+            filter.when(() -> OutboundRequestFilter.isAllowed(org.mockito.Mockito.anyString())).thenReturn(true);
+
+            actionValidator.validateEndpointUri("https://extension.example.com/action");
+        }
+    }
+
+    @Test
+    public void testThePolicyIsNotConsultedWhenEnforcementIsOff() throws ActionMgtClientException {
+
+        try (org.mockito.MockedStatic<IdentityUtil> identityUtil =
+                     org.mockito.Mockito.mockStatic(IdentityUtil.class);
+             org.mockito.MockedStatic<OutboundRequestFilter> filter =
+                     org.mockito.Mockito.mockStatic(OutboundRequestFilter.class)) {
+            identityUtil.when(() -> IdentityUtil.getProperty(org.mockito.Mockito.anyString())).thenReturn(null);
+            filter.when(() -> OutboundRequestFilter.isAllowed(org.mockito.Mockito.anyString())).thenReturn(false);
+
+            actionValidator.validateEndpointUri("http://127.0.0.1:8899/action");
+            filter.verify(() -> OutboundRequestFilter.isAllowed(org.mockito.Mockito.anyString()),
+                    org.mockito.Mockito.never());
         }
     }
 }

@@ -53,6 +53,8 @@ import org.wso2.carbon.identity.action.execution.internal.util.ActionExecutorCon
 import org.wso2.carbon.identity.action.execution.internal.util.AuthMethods;
 import org.wso2.carbon.identity.action.management.api.model.AuthProperty;
 import org.wso2.carbon.identity.central.log.mgt.utils.LoggerUtils;
+import org.wso2.carbon.identity.core.util.IdentityUtil;
+import org.wso2.carbon.identity.core.util.OutboundRequestFilter;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -67,8 +69,12 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -490,7 +496,6 @@ public class APIClientTest {
         verify(httpClient, times(2)).execute(any(HttpPost.class));
     }
 
-
     @Test
     public void testCallAPIRetryOnTimeoutAndReceiveSuccessResponse() throws Exception {
 
@@ -573,5 +578,63 @@ public class APIClientTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(target, value);
+    }
+
+    private static final String ENFORCE_XPATH = "Actions.EnforceOutboundRequestFilter";
+
+    @Test
+    public void testCallAPIRefusesAnEndpointTheOutboundPolicyBlocks() throws Exception {
+
+        try (MockedStatic<IdentityUtil> identityUtil = mockStatic(IdentityUtil.class);
+             MockedStatic<OutboundRequestFilter> filter = mockStatic(OutboundRequestFilter.class, CALLS_REAL_METHODS)) {
+            identityUtil.when(() -> IdentityUtil.getProperty(anyString())).thenReturn(null);
+            identityUtil.when(() -> IdentityUtil.getProperty(eq(ENFORCE_XPATH))).thenReturn("true");
+            filter.when(() -> OutboundRequestFilter.isAllowed(anyString())).thenReturn(false);
+
+            ActionInvocationResponse response = apiClient.callAPI(ActionType.PRE_ISSUE_ACCESS_TOKEN,
+                    "https://blocked.example.com/action", null, Collections.emptyMap(), "{}");
+
+            assertTrue(response.isError());
+            assertNotNull(response.getErrorLog());
+            verify(httpClient, never()).execute(any(HttpPost.class));
+        }
+    }
+
+    @Test
+    public void testCallAPIRefusesAnEndpointWithADisallowedScheme() throws Exception {
+
+        try (MockedStatic<IdentityUtil> identityUtil = mockStatic(IdentityUtil.class);
+             MockedStatic<OutboundRequestFilter> filter = mockStatic(OutboundRequestFilter.class, CALLS_REAL_METHODS)) {
+            identityUtil.when(() -> IdentityUtil.getProperty(anyString())).thenReturn(null);
+            identityUtil.when(() -> IdentityUtil.getProperty(eq(ENFORCE_XPATH))).thenReturn("true");
+            filter.when(() -> OutboundRequestFilter.isAllowed(anyString())).thenReturn(true);
+
+            ActionInvocationResponse response = apiClient.callAPI(ActionType.PRE_ISSUE_ACCESS_TOKEN,
+                    "file:///etc/passwd", null, Collections.emptyMap(), "{}");
+
+            assertTrue(response.isError());
+            verify(httpClient, never()).execute(any(HttpPost.class));
+        }
+    }
+
+    @Test
+    public void testCallAPIDoesNotConsultThePolicyWhenEnforcementIsOff() throws Exception {
+
+        when(httpClient.execute(any(HttpPost.class))).thenReturn(httpResponse);
+        when(httpResponse.getStatusLine()).thenReturn(statusLine);
+        when(statusLine.getStatusCode()).thenReturn(HttpStatus.SC_OK);
+
+        try (MockedStatic<IdentityUtil> identityUtil = mockStatic(IdentityUtil.class);
+             MockedStatic<OutboundRequestFilter> filter = mockStatic(OutboundRequestFilter.class)) {
+            identityUtil.when(() -> IdentityUtil.getProperty(anyString())).thenReturn(null);
+            // The filter would block, but enforcement is off, so it must never be consulted.
+            filter.when(() -> OutboundRequestFilter.isAllowed(anyString())).thenReturn(false);
+
+            apiClient.callAPI(ActionType.PRE_ISSUE_ACCESS_TOKEN, "http://127.0.0.1:8899/action", null,
+                    Collections.emptyMap(), "{}");
+
+            filter.verify(() -> OutboundRequestFilter.isAllowed(anyString()), never());
+            verify(httpClient, times(1)).execute(any(HttpPost.class));
+        }
     }
 }

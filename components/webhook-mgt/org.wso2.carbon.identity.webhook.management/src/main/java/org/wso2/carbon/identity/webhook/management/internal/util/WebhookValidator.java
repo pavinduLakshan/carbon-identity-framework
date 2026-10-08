@@ -19,6 +19,10 @@
 package org.wso2.carbon.identity.webhook.management.internal.util;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.wso2.carbon.identity.base.IdentityException;
+import org.wso2.carbon.identity.core.util.OutboundRequestFilter;
 import org.wso2.carbon.identity.subscription.management.api.model.Subscription;
 import org.wso2.carbon.identity.webhook.management.api.exception.WebhookMgtClientException;
 import org.wso2.carbon.identity.webhook.management.api.exception.WebhookMgtException;
@@ -41,6 +45,8 @@ import static org.wso2.carbon.identity.webhook.management.internal.constant.Webh
  * Webhook validator class.
  */
 public class WebhookValidator {
+
+    private static final Log LOG = LogFactory.getLog(WebhookValidator.class);
 
     private static final String WEBHOOK_NAME_REGEX = "^[a-zA-Z0-9-_][a-zA-Z0-9-_ ]*[a-zA-Z0-9-_]$";
     private static final String ENDPOINT_URI_REGEX = "^https?://[^\\s/$.?#]\\S*";
@@ -91,6 +97,16 @@ public class WebhookValidator {
         if (!isValidUri) {
             throw WebhookManagementExceptionHandler.handleClientException(
                     ERROR_INVALID_WEBHOOK_REQUEST_FIELD, ENDPOINT_URI_FIELD);
+        }
+        if (OutboundRequestFilter.isEnforcedForWebhooks()) {
+            try {
+                OutboundRequestFilter.validate(uri);
+            } catch (IdentityException e) {
+                // Reported as an invalid field; the rule that refused it goes to the log only.
+                LOG.debug("Webhook endpoint URI refused by the outbound request policy: " + e.getMessage());
+                throw WebhookManagementExceptionHandler.handleClientException(
+                        ERROR_INVALID_WEBHOOK_REQUEST_FIELD, ENDPOINT_URI_FIELD);
+            }
         }
     }
 
