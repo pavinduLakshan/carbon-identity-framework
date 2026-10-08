@@ -31,12 +31,15 @@ import org.wso2.carbon.identity.application.common.IdentityApplicationManagement
 import org.wso2.carbon.identity.application.common.model.ServiceProvider;
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
+import org.wso2.carbon.stratos.common.exception.TenantManagementClientException;
+import org.wso2.carbon.tenant.mgt.util.TenantMgtUtil;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -209,7 +212,9 @@ public class LoginContextManagementUtil {
     }
 
     /**
-     * Resolve the placeholders in the access URL
+     * Resolve the placeholders in the access URL.
+     * The user tenant hint is taken from the "ut" or "t" request parameter. A hint that is not in a valid tenant
+     * domain format is ignored.
      *
      * @param accessURL Access URL.
      * @param request   Servlet Request.
@@ -223,14 +228,37 @@ public class LoginContextManagementUtil {
             return accessURL;
         }
         String userTenantHint = request.getParameter("ut");
-        if (StringUtils.isBlank(userTenantHint)) {
+        if (!isValidTenantDomainHint(userTenantHint)) {
             userTenantHint = request.getParameter("t");
         }
-        if (StringUtils.isBlank(userTenantHint)) {
+        if (!isValidTenantDomainHint(userTenantHint)) {
             userTenantHint = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
         }
-        return accessURL.replaceAll(Pattern.quote("${UserTenantHint}"), userTenantHint)
+        return accessURL.replace("${UserTenantHint}", userTenantHint)
                 .replaceAll(Pattern.quote("/t/carbon.super"), "");
+    }
+
+    /**
+     * Check whether the given tenant domain hint only contains the characters allowed in a tenant domain.
+     *
+     * @param tenantDomainHint Tenant domain hint.
+     * @return True if the hint is not blank and is in a valid tenant domain format.
+     */
+    private static boolean isValidTenantDomainHint(String tenantDomainHint) {
+
+        if (StringUtils.isBlank(tenantDomainHint)) {
+            return false;
+        }
+        try {
+            // Tenant domains are case insensitive, while this validation only accepts lowercase characters.
+            TenantMgtUtil.validateIllegalCharactersInDomain(tenantDomainHint.toLowerCase(Locale.ENGLISH));
+        } catch (TenantManagementClientException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("Ignoring the tenant domain hint as it is not in a valid tenant domain format.");
+            }
+            return false;
+        }
+        return true;
     }
 
     /**

@@ -654,6 +654,43 @@ public class IdentityManagementEndpointUtilTest {
         }
     }
 
+    @DataProvider(name = "userTenantHintPlaceholderData")
+    public Object[][] userTenantHintPlaceholderData() {
+
+        return new Object[][]{
+                // URL without the placeholder is returned as it is.
+                {"https://example.org/home", "wso2.com", "https://example.org/home"},
+                {"https://example.org/t/${UserTenantHint}/home", "wso2.com", "https://example.org/t/wso2.com/home"},
+                {"https://example.org/t/${UserTenantHint}/home", "abc-corp", "https://example.org/t/abc-corp/home"},
+                {"https://example.org/t/${UserTenantHint}/home", "WSO2.com", "https://example.org/t/WSO2.com/home"},
+                {"https://example.org/t/${UserTenantHint}/home", "my_org.handle",
+                        "https://example.org/t/my_org.handle/home"},
+                {"https://example.org/t/${UserTenantHint}/home", "558265ae-a9f8-488f-9b86-fb2c414a79f0",
+                        "https://example.org/t/558265ae-a9f8-488f-9b86-fb2c414a79f0/home"},
+                {"https://${UserTenantHint}.example.org/home", "wso2.com", "https://wso2.com.example.org/home"},
+                // Super tenant path is removed.
+                {"https://example.org/t/${UserTenantHint}/home", "carbon.super", "https://example.org/home"},
+                {"https://example.org/t/${UserTenantHint}/home", null, "https://example.org/home"},
+                {"https://example.org/t/${UserTenantHint}/home", "  ", "https://example.org/home"},
+                // Values that are not in a valid tenant domain format fall back to the super tenant.
+                {"https://example.org/t/${UserTenantHint}/home", "example.com/", "https://example.org/home"},
+                {"https://${UserTenantHint}.example.org/home", "example.com/",
+                        "https://carbon.super.example.org/home"},
+                {"https://${UserTenantHint}.example.org/home", "example.com#",
+                        "https://carbon.super.example.org/home"},
+                {"https://${UserTenantHint}.example.org/home", "@example.com",
+                        "https://carbon.super.example.org/home"},
+                {"https://example.org/t/${UserTenantHint}/home", "../../other", "https://example.org/home"},
+                {"https://example.org/t/${UserTenantHint}/home", "$1", "https://example.org/home"},
+        };
+    }
+
+    @Test(dataProvider = "userTenantHintPlaceholderData")
+    public void testReplaceUserTenantHintPlaceholder(String url, String tenantDomain, String expected) {
+
+        assertEquals(IdentityManagementEndpointUtil.replaceUserTenantHintPlaceholder(url, tenantDomain), expected);
+    }
+
     private void mockCarbonContext(MockedStatic<PrivilegedCarbonContext> privilegedCarbonContext) {
 
         PrivilegedCarbonContext mockPrivilegedCarbonContext = mock(PrivilegedCarbonContext.class);

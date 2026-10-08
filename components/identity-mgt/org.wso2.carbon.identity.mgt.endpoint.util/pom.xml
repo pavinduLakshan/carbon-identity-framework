@@ -206,6 +206,11 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
+            <groupId>org.wso2.carbon.multitenancy</groupId>
+            <artifactId>org.wso2.carbon.tenant.mgt</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
             <groupId>org.wso2.carbon.identity.framework</groupId>
             <artifactId>org.wso2.carbon.identity.base</artifactId>
             <scope>provided</scope>
@@ -312,6 +317,8 @@
                             org.wso2.carbon.identity.base; version="${carbon.identity.package.import.version.range}",
 
                             org.wso2.carbon.idp.mgt; version="${carbon.identity.package.import.version.range}",
+                            org.wso2.carbon.stratos.common.exception; version="${carbon.commons.imp.pkg.version}",
+                            org.wso2.carbon.tenant.mgt.util; version="${carbon.multitenancy.imp.pkg.version.range}",
                             org.wso2.carbon.identity.application.authentication.framework.util;
                             version="${carbon.identity.package.import.version.range}",
 

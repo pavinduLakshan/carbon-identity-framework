@@ -100,6 +100,10 @@
             <artifactId>org.wso2.carbon.idp.mgt</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.wso2.carbon.multitenancy</groupId>
+            <artifactId>org.wso2.carbon.tenant.mgt</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.wso2.carbon.identity.framework</groupId>
             <artifactId>org.wso2.carbon.identity.application.mgt</artifactId>
         </dependency>
@@ -279,6 +283,7 @@
                             org.wso2.carbon.utils.*; version="${carbon.kernel.package.import.version.range}",
 
                             org.wso2.carbon.stratos.common.*; version="${carbon.commons.imp.pkg.version}",
+                            org.wso2.carbon.tenant.mgt.util; version="${carbon.multitenancy.imp.pkg.version.range}",
                             org.slf4j; version="${org.slf4j.imp.pkg.version.range}",
 
                             org.wso2.carbon.claim.mgt; version="${carbon.identity.package.import.version.range}",
