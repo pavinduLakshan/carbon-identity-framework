@@ -47,6 +47,8 @@ import org.wso2.carbon.identity.action.execution.api.model.ActionInvocationSucce
 import org.wso2.carbon.identity.action.execution.api.model.ActionType;
 import org.wso2.carbon.identity.action.execution.api.model.ResponseData;
 import org.wso2.carbon.identity.action.execution.internal.service.impl.ResponseDataDeserializer;
+import org.wso2.carbon.identity.base.IdentityException;
+import org.wso2.carbon.identity.core.util.OutboundRequestFilter;
 
 import java.io.IOException;
 import java.net.SocketException;
@@ -97,6 +99,18 @@ public class APIClient {
      */
     public ActionInvocationResponse callAPI(ActionType actionType, String url, AuthMethods.AuthMethod authMethod,
                                             Map<String, String> additionalHeaders, String payload) {
+
+        if (OutboundRequestFilter.isEnforcedForActions()) {
+            try {
+                OutboundRequestFilter.validate(url);
+            } catch (IdentityException e) {
+                LOG.error("Action endpoint refused by the outbound request policy: " + e.getMessage()
+                        + " Endpoint: " + url);
+                return new ActionInvocationResponse.Builder()
+                        .errorLog("The action endpoint is not permitted by the server outbound request policy.")
+                        .build();
+            }
+        }
 
         HttpPost httpPost = new HttpPost(url);
         setRequestEntity(httpPost, payload, authMethod, additionalHeaders);

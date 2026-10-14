@@ -23,6 +23,8 @@ import org.mockito.Mockito;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import org.wso2.carbon.identity.core.util.IdentityUtil;
+import org.wso2.carbon.identity.core.util.OutboundRequestFilter;
 import org.wso2.carbon.identity.subscription.management.api.model.Subscription;
 import org.wso2.carbon.identity.webhook.management.api.exception.WebhookMgtClientException;
 import org.wso2.carbon.identity.webhook.management.api.exception.WebhookMgtException;
@@ -216,6 +218,53 @@ public class WebhookValidatorTest {
             mockedHolder.when(WebhookManagementComponentServiceHolder::getInstance).thenReturn(holder);
 
             validator.validateChannelsSubscribed("profile1", Collections.singletonList(subscription));
+        }
+    }
+
+    private static final String ENFORCE_XPATH = "Webhooks.EnforceOutboundRequestFilter";
+
+    @Test
+    public void testEndpointRefusedByTheOutboundPolicyIsRejected() {
+
+        try (MockedStatic<IdentityUtil> identityUtil = Mockito.mockStatic(IdentityUtil.class);
+             MockedStatic<OutboundRequestFilter> filter =
+                     Mockito.mockStatic(OutboundRequestFilter.class, Mockito.CALLS_REAL_METHODS)) {
+            identityUtil.when(() -> IdentityUtil.getProperty(Mockito.anyString())).thenReturn(null);
+            identityUtil.when(() -> IdentityUtil.getProperty(ENFORCE_XPATH)).thenReturn("true");
+            filter.when(() -> OutboundRequestFilter.isAllowed(Mockito.anyString())).thenReturn(false);
+
+            validator.validateEndpointUri("https://blocked.example.com/hook");
+            org.testng.Assert.fail("Expected the endpoint to be rejected.");
+        } catch (WebhookMgtClientException e) {
+            // The caller gets the same message a malformed URI gets, so the response is not an oracle.
+            org.testng.Assert.assertEquals(e.getDescription(), "Endpoint URI is invalid.");
+        }
+    }
+
+    @Test
+    public void testPermittedEndpointIsAcceptedWhenEnforced() throws WebhookMgtClientException {
+
+        try (MockedStatic<IdentityUtil> identityUtil = Mockito.mockStatic(IdentityUtil.class);
+             MockedStatic<OutboundRequestFilter> filter =
+                     Mockito.mockStatic(OutboundRequestFilter.class, Mockito.CALLS_REAL_METHODS)) {
+            identityUtil.when(() -> IdentityUtil.getProperty(Mockito.anyString())).thenReturn(null);
+            identityUtil.when(() -> IdentityUtil.getProperty(ENFORCE_XPATH)).thenReturn("true");
+            filter.when(() -> OutboundRequestFilter.isAllowed(Mockito.anyString())).thenReturn(true);
+
+            validator.validateEndpointUri("https://hooks.example.com/hook");
+        }
+    }
+
+    @Test
+    public void testThePolicyIsNotConsultedWhenEnforcementIsOff() throws WebhookMgtClientException {
+
+        try (MockedStatic<IdentityUtil> identityUtil = Mockito.mockStatic(IdentityUtil.class);
+             MockedStatic<OutboundRequestFilter> filter = Mockito.mockStatic(OutboundRequestFilter.class)) {
+            identityUtil.when(() -> IdentityUtil.getProperty(Mockito.anyString())).thenReturn(null);
+            filter.when(() -> OutboundRequestFilter.isAllowed(Mockito.anyString())).thenReturn(false);
+
+            validator.validateEndpointUri("http://127.0.0.1:8899/hook");
+            filter.verify(() -> OutboundRequestFilter.isAllowed(Mockito.anyString()), Mockito.never());
         }
     }
 }
