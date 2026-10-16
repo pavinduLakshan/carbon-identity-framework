@@ -60,6 +60,8 @@ import org.wso2.carbon.identity.mgt.endpoint.util.client.model.Error;
 import org.wso2.carbon.identity.mgt.endpoint.util.client.model.RetryError;
 import org.wso2.carbon.identity.mgt.endpoint.util.client.model.User;
 import org.wso2.carbon.identity.mgt.stub.beans.VerificationBean;
+import org.wso2.carbon.stratos.common.exception.TenantManagementClientException;
+import org.wso2.carbon.tenant.mgt.util.TenantMgtUtil;
 import org.wso2.carbon.utils.httpclient5.HTTPClientUtils;
 import org.wso2.securevault.SecretResolver;
 import org.wso2.securevault.SecretResolverFactory;
@@ -80,6 +82,7 @@ import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.ResourceBundle;
@@ -227,6 +230,7 @@ public class IdentityManagementEndpointUtil {
 
     /**
      * Replace the ${UserTenantHint} placeholder in the url with the tenant domain.
+     * If the tenant domain is blank or not in a valid tenant domain format, the super tenant domain is used.
      *
      * @param url           Url with the placeholder.
      * @param tenantDomain  Tenant Domain.
@@ -242,9 +246,31 @@ public class IdentityManagementEndpointUtil {
         }
         if (StringUtils.isBlank(tenantDomain)) {
             tenantDomain = SUPER_TENANT;
+        } else if (!isValidTenantDomain(tenantDomain)) {
+            if (log.isDebugEnabled()) {
+                log.debug("Using the super tenant domain as the given tenant domain is not in a valid format.");
+            }
+            tenantDomain = SUPER_TENANT;
         }
-        return url.replaceAll(Pattern.quote(USER_TENANT_HINT_PLACE_HOLDER), tenantDomain)
+        return url.replace(USER_TENANT_HINT_PLACE_HOLDER, tenantDomain)
                 .replaceAll(Pattern.quote("/t/" + SUPER_TENANT), "");
+    }
+
+    /**
+     * Check whether the given tenant domain only contains the characters allowed in a tenant domain.
+     *
+     * @param tenantDomain Tenant domain.
+     * @return True if the tenant domain is in a valid format.
+     */
+    private static boolean isValidTenantDomain(String tenantDomain) {
+
+        try {
+            // Tenant domains are case insensitive, while this validation only accepts lowercase characters.
+            TenantMgtUtil.validateIllegalCharactersInDomain(tenantDomain.toLowerCase(Locale.ENGLISH));
+            return true;
+        } catch (TenantManagementClientException e) {
+            return false;
+        }
     }
 
     /**
