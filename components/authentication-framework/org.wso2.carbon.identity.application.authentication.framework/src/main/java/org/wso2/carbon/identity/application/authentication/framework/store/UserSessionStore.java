@@ -65,6 +65,7 @@ public class UserSessionStore {
     private static final String IDN_AUTH_USER_SESSION_MAPPING_TABLE = "IDN_AUTH_USER_SESSION_MAPPING";
     private static final String IDN_AUTH_SESSION_APP_INFO_TABLE = "IDN_AUTH_SESSION_APP_INFO_TABLE";
     private static final String IDN_AUTH_SESSION_META_DATA_TABLE = "IDN_AUTH_SESSION_META_DATA";
+    private static final String IDN_FED_AUTH_SESSION_MAPPING_TABLE = "IDN_FED_AUTH_SESSION_MAPPING";
 
     private int deleteChunkSize = 10000;
 
@@ -485,6 +486,7 @@ public class UserSessionStore {
                         SQLQueries.SQL_DELETE_IDN_AUTH_SESSION_META_DATA);
 
                 IdentityDatabaseUtil.commitTransaction(connection);
+                removeFederatedAuthSessionMappings(sessionsToRemove);
             } else {
                 if (log.isDebugEnabled()) {
                     log.debug("No expired sessions found to remove.");
@@ -517,12 +519,37 @@ public class UserSessionStore {
                 deleteSessionDataFromTable(sessionsToRemove, connection, IDN_AUTH_SESSION_META_DATA_TABLE,
                         SQLQueries.SQL_DELETE_IDN_AUTH_SESSION_META_DATA);
                 IdentityDatabaseUtil.commitTransaction(connection);
+                removeFederatedAuthSessionMappings(sessionsToRemove);
             } catch (SQLException e1) {
                 IdentityDatabaseUtil.rollbackTransaction(connection);
                 log.error("Error while removing the terminated session information from the database.", e1);
             }
         } catch (SQLException e) {
             log.error("Error while obtaining the db connection to remove terminated session information", e);
+        }
+    }
+
+    /**
+     * Remove the federated authentication session mappings of the given sessions. The mappings are stored in the
+     * identity database, while the other session records are stored in the session database.
+     *
+     * @param sessionsToRemove array of session ids whose mappings should be removed
+     */
+    private void removeFederatedAuthSessionMappings(String[] sessionsToRemove) {
+
+        try (Connection connection = IdentityDatabaseUtil.getDBConnection(true)) {
+            try {
+                deleteSessionDataFromTable(sessionsToRemove, connection, IDN_FED_AUTH_SESSION_MAPPING_TABLE,
+                        SQLQueries.SQL_DELETE_FEDERATED_AUTH_SESSION_INFO);
+                IdentityDatabaseUtil.commitTransaction(connection);
+            } catch (SQLException e1) {
+                IdentityDatabaseUtil.rollbackTransaction(connection);
+                log.error("Error while removing the federated authentication session mappings of the removed " +
+                        "sessions from the database.", e1);
+            }
+        } catch (SQLException e) {
+            log.error("Error while obtaining the db connection to remove federated authentication session mappings.",
+                    e);
         }
     }
 
