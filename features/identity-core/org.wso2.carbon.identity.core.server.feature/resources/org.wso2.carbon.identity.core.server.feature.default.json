@@ -298,6 +298,7 @@
     "RSA-OAEP-512"
   ],
   "oauth.oidc.request_object.supported_encryption_methods": "$ref{oauth.oidc.id_token.supported_encryption_methods}",
+  "oauth.oidc.request_object.block_compressed_messages": false,
   "oauth.oidc.token_validation.logout_token_validity": "2m",
   "oauth.oidc.logout_request_sender.pool_size": "20",
   "oauth.oidc.logout_request_sender.work_queue_size": "1000",
@@ -364,6 +365,7 @@
 
   "rest_api_authentication.add_realm_user_to_error": false,
 
+  "openid.max_signed_text_size": "5242880",
   "saml.entity_id": "${carbon.host}",
   "saml.attribute_claim_dialect": "http://wso2.org/claims",
   "saml.slo.retry_attempts": "5",
@@ -387,6 +389,8 @@
   "saml.enable_saml_idp_init_logout_response_signing": true,
   "saml.return_valid_name_id_format": false,
   "saml.response.allow_nested_assertions": false,
+  "saml.request_max_element_depth": "25",
+  "saml.block_compressed_messages": true,
 
   "saml.endpoints.idp_url": "$ref{server.base_path}/samlsso",
   "saml.endpoints.logout": "$ref{server.base_path}/authenticationendpoint/samlsso_logout.do",

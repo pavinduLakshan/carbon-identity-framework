@@ -227,6 +227,9 @@
         <OpenIDRememberMeExpiry>7200</OpenIDRememberMeExpiry>
         <!-- To enable or disable openid dumb mode -->
         <DisableOpenIDDumbMode>false</DisableOpenIDDumbMode>
+        <!-- Maximum size of the signed text built from the openid.signed list of a verification request.
+             Set to -1 for no limit. -->
+        <OpenIDMaxSignedTextSize>{{openid.max_signed_text_size}}</OpenIDMaxSignedTextSize>
         <!--
                OpenID private association store is configurable from following configs.
                It includes two new replication stores,
@@ -1002,6 +1005,14 @@
                 {% endfor %}
             </SupportedRequestObjectEncryptionMethods>
 
+            <!--
+                By enabling this property, encrypted request objects with a compressed payload are blocked
+                before decryption.
+
+                Default value : false
+            -->
+            <BlockCompressedRequestObjects>{{oauth.oidc.request_object.block_compressed_messages}}</BlockCompressedRequestObjects>
+
             <EnableAudiences>true</EnableAudiences>
             {% if oauth.oidc.id_token.audiences|length %}
             <Audiences>
@@ -1605,6 +1616,8 @@
         <ReturnValidNameIDFormat>{{saml.return_valid_name_id_format}}</ReturnValidNameIDFormat>
         <SAMLSLOFrontChannelPostBindingLogoutRequestSignatureWithTenantCert>{{saml.slo.front_channel.post_binding.logout_request_signature_with_tenant_cert}}</SAMLSLOFrontChannelPostBindingLogoutRequestSignatureWithTenantCert>
         <SAMLAllowNestedAssertionsInResponse>{{saml.response.allow_nested_assertions}}</SAMLAllowNestedAssertionsInResponse>
+        <SAMLRequestMaxElementDepth>{{saml.request_max_element_depth}}</SAMLRequestMaxElementDepth>
+        <SAMLBlockCompressedMessages>{{saml.block_compressed_messages}}</SAMLBlockCompressedMessages>
     </SSOService>
 
     <Consent>
