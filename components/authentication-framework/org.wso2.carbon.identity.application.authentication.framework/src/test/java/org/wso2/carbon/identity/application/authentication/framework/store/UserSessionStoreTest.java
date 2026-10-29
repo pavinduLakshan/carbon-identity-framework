@@ -697,6 +697,35 @@ public class UserSessionStoreTest extends DataStoreBaseTest {
         }
     }
 
+    /**
+     * Each update of a session adds a record. The session cleanup task keeps the federated session mapping of a
+     * session whose older record has expired while a newer record has not.
+     */
+    @Test
+    public void testRemoveExpiredSessionRecordsKeepsMappingsOfSessionsWithActiveRecord() throws Exception {
+
+        long currentTime = FrameworkUtils.getCurrentStandardNano();
+        try (Connection connection = getConnection(DB_NAME)) {
+            mockSessionAndIdentityDBConnections(connection);
+            createSessionWithExpiryTime(connection, "fedExtendedSession", currentTime - TimeUnit.MINUTES.toNanos(5),
+                    currentTime - TimeUnit.MINUTES.toNanos(1));
+            createSessionWithExpiryTime(connection, "fedExtendedSession", currentTime,
+                    currentTime + TimeUnit.MINUTES.toNanos(10));
+            createSessionWithExpiryTime(connection, "fedExpiredSession", currentTime - TimeUnit.MINUTES.toNanos(5),
+                    currentTime - TimeUnit.MINUTES.toNanos(1));
+            createFederatedSessionMapping(connection, "fedExtendedSessionIndex", "fedExtendedSession");
+            createFederatedSessionMapping(connection, "fedExpiredSessionIndex", "fedExpiredSession");
+
+            UserSessionStore.getInstance().removeExpiredSessionRecords();
+
+            Assert.assertTrue(isFederatedSessionMappingAvailable(connection, "fedExtendedSession"),
+                    "Federated session mapping of a session with a record that has not expired should be kept.");
+            Assert.assertFalse(isFederatedSessionMappingAvailable(connection, "fedExpiredSession"),
+                    "Federated session mapping of an expired session should be removed.");
+            deleteFederatedSessionTestData(connection);
+        }
+    }
+
     @Test
     public void testRemoveTerminatedSessionRecordsRemovesFederatedSessionMappings() throws Exception {
 
@@ -728,13 +757,19 @@ public class UserSessionStoreTest extends DataStoreBaseTest {
     private void createSessionWithExpiryTime(Connection connection, String sessionId, long expiryTime)
             throws SQLException {
 
+        createSessionWithExpiryTime(connection, sessionId, FrameworkUtils.getCurrentStandardNano(), expiryTime);
+    }
+
+    private void createSessionWithExpiryTime(Connection connection, String sessionId, long timeCreated,
+                                             long expiryTime) throws SQLException {
+
         String sql = "INSERT INTO IDN_AUTH_SESSION_STORE (SESSION_ID, SESSION_TYPE, OPERATION, TIME_CREATED, " +
                 "TENANT_ID, EXPIRY_TIME) VALUES (?, ?, ?, ?, ?, ?)";
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.setString(1, sessionId);
             stmt.setString(2, "AppAuthFrameworkSessionContextCache");
             stmt.setString(3, "STORE");
-            stmt.setLong(4, FrameworkUtils.getCurrentStandardNano());
+            stmt.setLong(4, timeCreated);
             stmt.setInt(5, TENANT_ID);
             stmt.setLong(6, expiryTime);
             stmt.executeUpdate();
@@ -770,7 +805,8 @@ public class UserSessionStoreTest extends DataStoreBaseTest {
 
         String[] cleanupStatements = {
                 "DELETE FROM IDN_FED_AUTH_SESSION_MAPPING",
-                "DELETE FROM IDN_AUTH_SESSION_STORE WHERE SESSION_ID IN ('fedExpiredSession', 'fedActiveSession')"
+                "DELETE FROM IDN_AUTH_SESSION_STORE WHERE SESSION_ID IN ('fedExpiredSession', 'fedActiveSession', " +
+                        "'fedExtendedSession')"
         };
         for (String sql : cleanupStatements) {
             try (PreparedStatement stmt = connection.prepareStatement(sql)) {

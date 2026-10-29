@@ -467,7 +467,8 @@ public class UserSessionStore {
         }
 
         try (Connection connection = IdentityDatabaseUtil.getSessionDBConnection(true)) {
-            Set<String> terminatedAuthSessionIds = getSessionsTerminated(connection);
+            long currentTime = FrameworkUtils.getCurrentStandardNano();
+            Set<String> terminatedAuthSessionIds = getSessionsTerminated(connection, currentTime);
             String[] sessionsToRemove = new String[terminatedAuthSessionIds.size()];
             terminatedAuthSessionIds.toArray(sessionsToRemove);
 
@@ -485,8 +486,13 @@ public class UserSessionStore {
                 deleteSessionDataFromTable(sessionsToRemove, connection, IDN_AUTH_SESSION_META_DATA_TABLE,
                         SQLQueries.SQL_DELETE_IDN_AUTH_SESSION_META_DATA);
 
+                // Keep the federated session mappings of sessions that still have a record that has not expired.
+                terminatedAuthSessionIds.removeAll(getExpiredSessionsWithActiveRecord(connection, currentTime));
+
                 IdentityDatabaseUtil.commitTransaction(connection);
-                removeFederatedAuthSessionMappings(sessionsToRemove);
+                if (!terminatedAuthSessionIds.isEmpty()) {
+                    removeFederatedAuthSessionMappings(terminatedAuthSessionIds.toArray(new String[0]));
+                }
             } else {
                 if (log.isDebugEnabled()) {
                     log.debug("No expired sessions found to remove.");
@@ -553,7 +559,7 @@ public class UserSessionStore {
         }
     }
 
-    private Set<String> getSessionsTerminated(Connection connection) throws SQLException {
+    private Set<String> getSessionsTerminated(Connection connection, long currentTime) throws SQLException {
 
         Set<String> terminatedSessionIds = new HashSet<>();
 
@@ -567,7 +573,7 @@ public class UserSessionStore {
          */
         try (PreparedStatement preparedStatement = connection.prepareStatement(SQLQueries
                 .SQL_SELECT_TERMINATED_SESSION_IDS)) {
-            preparedStatement.setLong(1, FrameworkUtils.getCurrentStandardNano());
+            preparedStatement.setLong(1, currentTime);
             try (ResultSet resultSet = preparedStatement.executeQuery()) {
                 while (resultSet.next()) {
                     terminatedSessionIds.add(resultSet.getString(1));
@@ -576,6 +582,32 @@ public class UserSessionStore {
         }
 
         return terminatedSessionIds;
+    }
+
+    /**
+     * Get the sessions that have an expired record and also a record that has not expired. Each update of a session
+     * adds a record, so these sessions are still active.
+     *
+     * @param connection  db connection
+     * @param currentTime time used to decide whether a record has expired
+     * @return session ids of the active sessions that have an expired record
+     * @throws SQLException if the DB execution fails
+     */
+    private Set<String> getExpiredSessionsWithActiveRecord(Connection connection, long currentTime)
+            throws SQLException {
+
+        Set<String> activeSessionIds = new HashSet<>();
+        try (PreparedStatement preparedStatement = connection.prepareStatement(SQLQueries
+                .SQL_SELECT_EXPIRED_SESSION_IDS_WITH_ACTIVE_RECORD)) {
+            preparedStatement.setLong(1, currentTime);
+            preparedStatement.setLong(2, currentTime);
+            try (ResultSet resultSet = preparedStatement.executeQuery()) {
+                while (resultSet.next()) {
+                    activeSessionIds.add(resultSet.getString(1));
+                }
+            }
+        }
+        return activeSessionIds;
     }
 
     /**
