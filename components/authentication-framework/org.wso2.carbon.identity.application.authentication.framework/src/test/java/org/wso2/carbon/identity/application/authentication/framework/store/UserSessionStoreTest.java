@@ -52,7 +52,9 @@ import java.util.stream.Stream;
 
 import javax.sql.DataSource;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.spy;
 
@@ -726,6 +728,53 @@ public class UserSessionStoreTest extends DataStoreBaseTest {
         }
     }
 
+    /**
+     * A failure while looking for active sessions must not undo the removal of the expired session records. The
+     * federated session mappings are kept in that run.
+     */
+    @Test
+    public void testRemoveExpiredSessionRecordsWhenActiveRecordLookupFails() throws Exception {
+
+        long currentTime = FrameworkUtils.getCurrentStandardNano();
+        try (Connection connection = getConnection(DB_NAME)) {
+            // getSessionDBConnection(true) returns a connection with auto commit disabled.
+            connection.setAutoCommit(false);
+            Connection spyConnection = spy(connection);
+            doNothing().when(spyConnection).close();
+            doThrow(new SQLException("Lookup failure")).when(spyConnection)
+                    .prepareStatement(SQLQueries.SQL_SELECT_EXPIRED_SESSION_IDS_WITH_ACTIVE_RECORD);
+            mockedIdentityDatabaseUtil.when(() -> IdentityDatabaseUtil.getSessionDBConnection(true))
+                    .thenReturn(spyConnection);
+            mockedIdentityDatabaseUtil.when(() -> IdentityDatabaseUtil.getDBConnection(true))
+                    .thenReturn(spyConnection);
+            mockedIdentityDatabaseUtil.when(() -> IdentityDatabaseUtil.commitTransaction(any(Connection.class)))
+                    .thenAnswer(invocation -> {
+                        ((Connection) invocation.getArgument(0)).commit();
+                        return null;
+                    });
+            createSessionWithExpiryTime(connection, "fedExpiredSession", currentTime - TimeUnit.MINUTES.toNanos(1));
+            createFederatedSessionMapping(connection, "fedExpiredSessionIndex", "fedExpiredSession");
+            connection.commit();
+            createUserSessionMapping("fedUser", "fedExpiredSession");
+
+            try {
+                UserSessionStore.getInstance().removeExpiredSessionRecords();
+            } finally {
+                mockedIdentityDatabaseUtil.when(() -> IdentityDatabaseUtil.commitTransaction(any(Connection.class)))
+                        .thenAnswer(invocation -> null);
+            }
+            // Discard the work that was not committed.
+            connection.rollback();
+            connection.setAutoCommit(true);
+
+            Assert.assertFalse(isUserSessionMappingAvailable(connection, "fedExpiredSession"),
+                    "The removal of the expired session records should be committed.");
+            Assert.assertTrue(isFederatedSessionMappingAvailable(connection, "fedExpiredSession"),
+                    "Federated session mappings should be kept when the active record lookup fails.");
+            deleteFederatedSessionTestData(connection);
+        }
+    }
+
     @Test
     public void testRemoveTerminatedSessionRecordsRemovesFederatedSessionMappings() throws Exception {
 
@@ -793,6 +842,17 @@ public class UserSessionStoreTest extends DataStoreBaseTest {
     private boolean isFederatedSessionMappingAvailable(Connection connection, String sessionId) throws SQLException {
 
         String sql = "SELECT 1 FROM IDN_FED_AUTH_SESSION_MAPPING WHERE SESSION_ID = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, sessionId);
+            try (ResultSet resultSet = stmt.executeQuery()) {
+                return resultSet.next();
+            }
+        }
+    }
+
+    private boolean isUserSessionMappingAvailable(Connection connection, String sessionId) throws SQLException {
+
+        String sql = "SELECT 1 FROM IDN_AUTH_USER_SESSION_MAPPING WHERE SESSION_ID = ?";
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.setString(1, sessionId);
             try (ResultSet resultSet = stmt.executeQuery()) {

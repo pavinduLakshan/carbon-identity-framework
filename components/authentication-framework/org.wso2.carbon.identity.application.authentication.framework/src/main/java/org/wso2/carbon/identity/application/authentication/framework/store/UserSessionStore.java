@@ -486,10 +486,17 @@ public class UserSessionStore {
                 deleteSessionDataFromTable(sessionsToRemove, connection, IDN_AUTH_SESSION_META_DATA_TABLE,
                         SQLQueries.SQL_DELETE_IDN_AUTH_SESSION_META_DATA);
 
-                // Keep the federated session mappings of sessions that still have a record that has not expired.
-                terminatedAuthSessionIds.removeAll(getExpiredSessionsWithActiveRecord(connection, currentTime));
-
                 IdentityDatabaseUtil.commitTransaction(connection);
+
+                // Keep the federated session mappings of sessions that still have a record that has not expired.
+                try {
+                    terminatedAuthSessionIds.removeAll(getExpiredSessionsWithActiveRecord(connection, currentTime));
+                } catch (SQLException e) {
+                    IdentityDatabaseUtil.rollbackTransaction(connection);
+                    log.error("Error while retrieving the expired sessions that still have an active record. " +
+                            "Federated authentication session mappings are not removed in this run.", e);
+                    return;
+                }
                 if (!terminatedAuthSessionIds.isEmpty()) {
                     removeFederatedAuthSessionMappings(terminatedAuthSessionIds.toArray(new String[0]));
                 }
