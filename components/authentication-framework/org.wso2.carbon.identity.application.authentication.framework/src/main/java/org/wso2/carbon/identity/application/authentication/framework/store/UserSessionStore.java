@@ -65,6 +65,7 @@ public class UserSessionStore {
     private static final String IDN_AUTH_USER_SESSION_MAPPING_TABLE = "IDN_AUTH_USER_SESSION_MAPPING";
     private static final String IDN_AUTH_SESSION_APP_INFO_TABLE = "IDN_AUTH_SESSION_APP_INFO_TABLE";
     private static final String IDN_AUTH_SESSION_META_DATA_TABLE = "IDN_AUTH_SESSION_META_DATA";
+    private static final String IDN_FED_AUTH_SESSION_MAPPING_TABLE = "IDN_FED_AUTH_SESSION_MAPPING";
 
     private int deleteChunkSize = 10000;
 
@@ -466,7 +467,8 @@ public class UserSessionStore {
         }
 
         try (Connection connection = IdentityDatabaseUtil.getSessionDBConnection(true)) {
-            Set<String> terminatedAuthSessionIds = getSessionsTerminated(connection);
+            long currentTime = FrameworkUtils.getCurrentStandardNano();
+            Set<String> terminatedAuthSessionIds = getSessionsTerminated(connection, currentTime);
             String[] sessionsToRemove = new String[terminatedAuthSessionIds.size()];
             terminatedAuthSessionIds.toArray(sessionsToRemove);
 
@@ -485,6 +487,19 @@ public class UserSessionStore {
                         SQLQueries.SQL_DELETE_IDN_AUTH_SESSION_META_DATA);
 
                 IdentityDatabaseUtil.commitTransaction(connection);
+
+                // Keep the federated session mappings of sessions that still have a record that has not expired.
+                try {
+                    terminatedAuthSessionIds.removeAll(getExpiredSessionsWithActiveRecord(connection, currentTime));
+                } catch (SQLException e) {
+                    IdentityDatabaseUtil.rollbackTransaction(connection);
+                    log.error("Error while retrieving the expired sessions that still have an active record. " +
+                            "Federated authentication session mappings are not removed in this run.", e);
+                    return;
+                }
+                if (!terminatedAuthSessionIds.isEmpty()) {
+                    removeFederatedAuthSessionMappings(terminatedAuthSessionIds.toArray(new String[0]));
+                }
             } else {
                 if (log.isDebugEnabled()) {
                     log.debug("No expired sessions found to remove.");
@@ -517,6 +532,7 @@ public class UserSessionStore {
                 deleteSessionDataFromTable(sessionsToRemove, connection, IDN_AUTH_SESSION_META_DATA_TABLE,
                         SQLQueries.SQL_DELETE_IDN_AUTH_SESSION_META_DATA);
                 IdentityDatabaseUtil.commitTransaction(connection);
+                removeFederatedAuthSessionMappings(sessionsToRemove);
             } catch (SQLException e1) {
                 IdentityDatabaseUtil.rollbackTransaction(connection);
                 log.error("Error while removing the terminated session information from the database.", e1);
@@ -526,7 +542,31 @@ public class UserSessionStore {
         }
     }
 
-    private Set<String> getSessionsTerminated(Connection connection) throws SQLException {
+    /**
+     * Remove the federated authentication session mappings of the given sessions. The mappings are stored in the
+     * identity database, while the other session records are stored in the session database.
+     *
+     * @param sessionsToRemove array of session ids whose mappings should be removed
+     */
+    private void removeFederatedAuthSessionMappings(String[] sessionsToRemove) {
+
+        try (Connection connection = IdentityDatabaseUtil.getDBConnection(true)) {
+            try {
+                deleteSessionDataFromTable(sessionsToRemove, connection, IDN_FED_AUTH_SESSION_MAPPING_TABLE,
+                        SQLQueries.SQL_DELETE_FEDERATED_AUTH_SESSION_INFO);
+                IdentityDatabaseUtil.commitTransaction(connection);
+            } catch (SQLException e1) {
+                IdentityDatabaseUtil.rollbackTransaction(connection);
+                log.error("Error while removing the federated authentication session mappings of the removed " +
+                        "sessions from the database.", e1);
+            }
+        } catch (SQLException e) {
+            log.error("Error while obtaining the db connection to remove federated authentication session mappings.",
+                    e);
+        }
+    }
+
+    private Set<String> getSessionsTerminated(Connection connection, long currentTime) throws SQLException {
 
         Set<String> terminatedSessionIds = new HashSet<>();
 
@@ -540,7 +580,7 @@ public class UserSessionStore {
          */
         try (PreparedStatement preparedStatement = connection.prepareStatement(SQLQueries
                 .SQL_SELECT_TERMINATED_SESSION_IDS)) {
-            preparedStatement.setLong(1, FrameworkUtils.getCurrentStandardNano());
+            preparedStatement.setLong(1, currentTime);
             try (ResultSet resultSet = preparedStatement.executeQuery()) {
                 while (resultSet.next()) {
                     terminatedSessionIds.add(resultSet.getString(1));
@@ -549,6 +589,32 @@ public class UserSessionStore {
         }
 
         return terminatedSessionIds;
+    }
+
+    /**
+     * Get the sessions that have an expired record and also a record that has not expired. Each update of a session
+     * adds a record, so these sessions are still active.
+     *
+     * @param connection  db connection
+     * @param currentTime time used to decide whether a record has expired
+     * @return session ids of the active sessions that have an expired record
+     * @throws SQLException if the DB execution fails
+     */
+    private Set<String> getExpiredSessionsWithActiveRecord(Connection connection, long currentTime)
+            throws SQLException {
+
+        Set<String> activeSessionIds = new HashSet<>();
+        try (PreparedStatement preparedStatement = connection.prepareStatement(SQLQueries
+                .SQL_SELECT_EXPIRED_SESSION_IDS_WITH_ACTIVE_RECORD)) {
+            preparedStatement.setLong(1, currentTime);
+            preparedStatement.setLong(2, currentTime);
+            try (ResultSet resultSet = preparedStatement.executeQuery()) {
+                while (resultSet.next()) {
+                    activeSessionIds.add(resultSet.getString(1));
+                }
+            }
+        }
+        return activeSessionIds;
     }
 
     /**

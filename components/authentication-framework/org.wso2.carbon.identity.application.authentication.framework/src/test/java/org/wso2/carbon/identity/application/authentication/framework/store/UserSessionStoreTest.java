@@ -31,6 +31,7 @@ import org.wso2.carbon.database.utils.jdbc.exceptions.DataAccessException;
 import org.wso2.carbon.identity.application.authentication.framework.exception.DuplicatedAuthUserException;
 import org.wso2.carbon.identity.application.authentication.framework.exception.UserSessionException;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
+import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkUtils;
 import org.wso2.carbon.identity.application.authentication.framework.util.SessionMgtConstants;
 import org.wso2.carbon.identity.core.util.IdentityDatabaseUtil;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
@@ -41,6 +42,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -50,7 +52,9 @@ import java.util.stream.Stream;
 
 import javax.sql.DataSource;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.spy;
 
@@ -672,6 +676,204 @@ public class UserSessionStoreTest extends DataStoreBaseTest {
             }
             connection.commit();
         }
+    }
+
+    @Test
+    public void testRemoveExpiredSessionRecordsRemovesFederatedSessionMappings() throws Exception {
+
+        long currentTime = FrameworkUtils.getCurrentStandardNano();
+        try (Connection connection = getConnection(DB_NAME)) {
+            mockSessionAndIdentityDBConnections(connection);
+            createSessionWithExpiryTime(connection, "fedExpiredSession", currentTime - TimeUnit.MINUTES.toNanos(1));
+            createSessionWithExpiryTime(connection, "fedActiveSession", currentTime + TimeUnit.MINUTES.toNanos(10));
+            createFederatedSessionMapping(connection, "fedExpiredSessionIndex", "fedExpiredSession");
+            createFederatedSessionMapping(connection, "fedActiveSessionIndex", "fedActiveSession");
+
+            UserSessionStore.getInstance().removeExpiredSessionRecords();
+
+            Assert.assertFalse(isFederatedSessionMappingAvailable(connection, "fedExpiredSession"),
+                    "Federated session mapping of an expired session should be removed.");
+            Assert.assertTrue(isFederatedSessionMappingAvailable(connection, "fedActiveSession"),
+                    "Federated session mapping of an active session should not be removed.");
+            deleteFederatedSessionTestData(connection);
+        }
+    }
+
+    /**
+     * Each update of a session adds a record. The session cleanup task keeps the federated session mapping of a
+     * session whose older record has expired while a newer record has not.
+     */
+    @Test
+    public void testRemoveExpiredSessionRecordsKeepsMappingsOfSessionsWithActiveRecord() throws Exception {
+
+        long currentTime = FrameworkUtils.getCurrentStandardNano();
+        try (Connection connection = getConnection(DB_NAME)) {
+            mockSessionAndIdentityDBConnections(connection);
+            createSessionWithExpiryTime(connection, "fedExtendedSession", currentTime - TimeUnit.MINUTES.toNanos(5),
+                    currentTime - TimeUnit.MINUTES.toNanos(1));
+            createSessionWithExpiryTime(connection, "fedExtendedSession", currentTime,
+                    currentTime + TimeUnit.MINUTES.toNanos(10));
+            createSessionWithExpiryTime(connection, "fedExpiredSession", currentTime - TimeUnit.MINUTES.toNanos(5),
+                    currentTime - TimeUnit.MINUTES.toNanos(1));
+            createFederatedSessionMapping(connection, "fedExtendedSessionIndex", "fedExtendedSession");
+            createFederatedSessionMapping(connection, "fedExpiredSessionIndex", "fedExpiredSession");
+
+            UserSessionStore.getInstance().removeExpiredSessionRecords();
+
+            Assert.assertTrue(isFederatedSessionMappingAvailable(connection, "fedExtendedSession"),
+                    "Federated session mapping of a session with a record that has not expired should be kept.");
+            Assert.assertFalse(isFederatedSessionMappingAvailable(connection, "fedExpiredSession"),
+                    "Federated session mapping of an expired session should be removed.");
+            deleteFederatedSessionTestData(connection);
+        }
+    }
+
+    /**
+     * A failure while looking for active sessions must not undo the removal of the expired session records. The
+     * federated session mappings are kept in that run.
+     */
+    @Test
+    public void testRemoveExpiredSessionRecordsWhenActiveRecordLookupFails() throws Exception {
+
+        long currentTime = FrameworkUtils.getCurrentStandardNano();
+        try (Connection connection = getConnection(DB_NAME)) {
+            // getSessionDBConnection(true) returns a connection with auto commit disabled.
+            connection.setAutoCommit(false);
+            Connection spyConnection = spy(connection);
+            doNothing().when(spyConnection).close();
+            doThrow(new SQLException("Lookup failure")).when(spyConnection)
+                    .prepareStatement(SQLQueries.SQL_SELECT_EXPIRED_SESSION_IDS_WITH_ACTIVE_RECORD);
+            mockedIdentityDatabaseUtil.when(() -> IdentityDatabaseUtil.getSessionDBConnection(true))
+                    .thenReturn(spyConnection);
+            mockedIdentityDatabaseUtil.when(() -> IdentityDatabaseUtil.getDBConnection(true))
+                    .thenReturn(spyConnection);
+            mockedIdentityDatabaseUtil.when(() -> IdentityDatabaseUtil.commitTransaction(any(Connection.class)))
+                    .thenAnswer(invocation -> {
+                        ((Connection) invocation.getArgument(0)).commit();
+                        return null;
+                    });
+            createSessionWithExpiryTime(connection, "fedExpiredSession", currentTime - TimeUnit.MINUTES.toNanos(1));
+            createFederatedSessionMapping(connection, "fedExpiredSessionIndex", "fedExpiredSession");
+            connection.commit();
+            createUserSessionMapping("fedUser", "fedExpiredSession");
+
+            try {
+                UserSessionStore.getInstance().removeExpiredSessionRecords();
+            } finally {
+                mockedIdentityDatabaseUtil.when(() -> IdentityDatabaseUtil.commitTransaction(any(Connection.class)))
+                        .thenAnswer(invocation -> null);
+            }
+            // Discard the work that was not committed.
+            connection.rollback();
+            connection.setAutoCommit(true);
+
+            Assert.assertFalse(isUserSessionMappingAvailable(connection, "fedExpiredSession"),
+                    "The removal of the expired session records should be committed.");
+            Assert.assertTrue(isFederatedSessionMappingAvailable(connection, "fedExpiredSession"),
+                    "Federated session mappings should be kept when the active record lookup fails.");
+            deleteFederatedSessionTestData(connection);
+        }
+    }
+
+    @Test
+    public void testRemoveTerminatedSessionRecordsRemovesFederatedSessionMappings() throws Exception {
+
+        try (Connection connection = getConnection(DB_NAME)) {
+            mockSessionAndIdentityDBConnections(connection);
+            createFederatedSessionMapping(connection, "fedTerminatedSessionIndex", "fedTerminatedSession");
+            createFederatedSessionMapping(connection, "fedOtherSessionIndex", "fedOtherSession");
+
+            UserSessionStore.getInstance().removeTerminatedSessionRecords(
+                    Collections.singletonList("fedTerminatedSession"));
+
+            Assert.assertFalse(isFederatedSessionMappingAvailable(connection, "fedTerminatedSession"),
+                    "Federated session mapping of a terminated session should be removed.");
+            Assert.assertTrue(isFederatedSessionMappingAvailable(connection, "fedOtherSession"),
+                    "Federated session mapping of another session should not be removed.");
+            deleteFederatedSessionTestData(connection);
+        }
+    }
+
+    private void mockSessionAndIdentityDBConnections(Connection connection) throws SQLException {
+
+        Connection spyConnection = spy(connection);
+        doNothing().when(spyConnection).close();
+        mockedIdentityDatabaseUtil.when(() -> IdentityDatabaseUtil.getSessionDBConnection(true))
+                .thenReturn(spyConnection);
+        mockedIdentityDatabaseUtil.when(() -> IdentityDatabaseUtil.getDBConnection(true)).thenReturn(spyConnection);
+    }
+
+    private void createSessionWithExpiryTime(Connection connection, String sessionId, long expiryTime)
+            throws SQLException {
+
+        createSessionWithExpiryTime(connection, sessionId, FrameworkUtils.getCurrentStandardNano(), expiryTime);
+    }
+
+    private void createSessionWithExpiryTime(Connection connection, String sessionId, long timeCreated,
+                                             long expiryTime) throws SQLException {
+
+        String sql = "INSERT INTO IDN_AUTH_SESSION_STORE (SESSION_ID, SESSION_TYPE, OPERATION, TIME_CREATED, " +
+                "TENANT_ID, EXPIRY_TIME) VALUES (?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, sessionId);
+            stmt.setString(2, "AppAuthFrameworkSessionContextCache");
+            stmt.setString(3, "STORE");
+            stmt.setLong(4, timeCreated);
+            stmt.setInt(5, TENANT_ID);
+            stmt.setLong(6, expiryTime);
+            stmt.executeUpdate();
+        }
+    }
+
+    private void createFederatedSessionMapping(Connection connection, String idpSessionId, String sessionId)
+            throws SQLException {
+
+        String sql = "INSERT INTO IDN_FED_AUTH_SESSION_MAPPING (IDP_SESSION_ID, SESSION_ID, IDP_NAME, " +
+                "AUTHENTICATOR_ID, PROTOCOL_TYPE, TENANT_ID, IDP_ID) VALUES (?, ?, 'FEDERATED', " +
+                "'OpenIDConnectAuthenticator', 'oidc', ?, (SELECT ID FROM IDP WHERE NAME = 'FEDERATED'))";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, idpSessionId);
+            stmt.setString(2, sessionId);
+            stmt.setInt(3, TENANT_ID);
+            stmt.executeUpdate();
+        }
+    }
+
+    private boolean isFederatedSessionMappingAvailable(Connection connection, String sessionId) throws SQLException {
+
+        String sql = "SELECT 1 FROM IDN_FED_AUTH_SESSION_MAPPING WHERE SESSION_ID = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, sessionId);
+            try (ResultSet resultSet = stmt.executeQuery()) {
+                return resultSet.next();
+            }
+        }
+    }
+
+    private boolean isUserSessionMappingAvailable(Connection connection, String sessionId) throws SQLException {
+
+        String sql = "SELECT 1 FROM IDN_AUTH_USER_SESSION_MAPPING WHERE SESSION_ID = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, sessionId);
+            try (ResultSet resultSet = stmt.executeQuery()) {
+                return resultSet.next();
+            }
+        }
+    }
+
+    private void deleteFederatedSessionTestData(Connection connection) throws SQLException {
+
+        String[] cleanupStatements = {
+                "DELETE FROM IDN_FED_AUTH_SESSION_MAPPING",
+                "DELETE FROM IDN_AUTH_SESSION_STORE WHERE SESSION_ID IN ('fedExpiredSession', 'fedActiveSession', " +
+                        "'fedExtendedSession')"
+        };
+        for (String sql : cleanupStatements) {
+            try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+                stmt.executeUpdate();
+            }
+        }
+        connection.commit();
     }
 
     private void cleanupTestData() throws SQLException {
