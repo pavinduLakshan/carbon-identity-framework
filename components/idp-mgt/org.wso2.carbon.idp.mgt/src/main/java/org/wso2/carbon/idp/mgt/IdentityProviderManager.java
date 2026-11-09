@@ -21,7 +21,6 @@ package org.wso2.carbon.idp.mgt;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.NotImplementedException;
-import org.apache.commons.lang.SerializationUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -3072,7 +3071,7 @@ public class IdentityProviderManager implements IdpManager {
             it permanently pins the cached SSO IdP's JWKS URI to whichever organization resolved it first,
             causing every other organization's back-channel logout token to be validated against the wrong
             organization's JWKS endpoint. */
-            IdentityProvider identityProviderCopy = (IdentityProvider) SerializationUtils.clone(identityProvider);
+            IdentityProvider identityProviderCopy = IdPManagementUtil.cloneIdentityProvider(identityProvider);
             identityProviderCopy.setIdpProperties(
                     addJWKSUriProperty(identityProviderCopy.getIdpProperties(), jwtIssuer));
             identityProvider = identityProviderCopy;
