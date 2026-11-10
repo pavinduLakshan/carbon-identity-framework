@@ -376,15 +376,30 @@ public class AuthenticationEndpointUtil {
      */
     public static String sendGetRequest(String backendURL) {
 
-        return HTTPClientManager.executeWithHttpClient(httpClient ->
-                sendGetRequest(backendURL, httpClient));
+        return sendGetRequest(backendURL, null);
     }
 
-    private static String sendGetRequest(String backendURL, CloseableHttpClient httpclient) {
+    /**
+     * Send GET request with client authentication, optionally forwarding a Cookie header, and return data.
+     *
+     * @param backendURL   The URL of the backend service.
+     * @param cookieHeader Value for the Cookie header to forward, or null.
+     * @return Data which was received from the backend service.
+     */
+    public static String sendGetRequest(String backendURL, String cookieHeader) {
+
+        return HTTPClientManager.executeWithHttpClient(httpClient ->
+                sendGetRequest(backendURL, cookieHeader, httpClient));
+    }
+
+    private static String sendGetRequest(String backendURL, String cookieHeader, CloseableHttpClient httpclient) {
 
         try {
             HttpGet httpGet = new HttpGet(backendURL);
             setAuthorizationHeader(httpGet);
+            if (StringUtils.isNotBlank(cookieHeader)) {
+                httpGet.addHeader("Cookie", cookieHeader);
+            }
             return httpclient.execute(httpGet, response -> {
                 if (log.isDebugEnabled()) {
                     log.debug("HTTP status " + response.getCode() +
