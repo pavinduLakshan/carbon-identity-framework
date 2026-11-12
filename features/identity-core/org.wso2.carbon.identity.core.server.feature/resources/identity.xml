@@ -656,6 +656,7 @@
             <FAPI>
                 <EnableCibaProfile>false</EnableCibaProfile>
                 <EnableSecurityProfile>false</EnableSecurityProfile>
+                <FAPIVersion>1</FAPIVersion>
             </FAPI>
             <EnableClaimsSeparationForAccessToken>true</EnableClaimsSeparationForAccessToken>
             <HonorMultivaluedClaimMetadata>false</HonorMultivaluedClaimMetadata>
